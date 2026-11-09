@@ -1,0 +1,34 @@
+from pathlib import Path
+import random
+from datetime import datetime, timedelta
+import pandas as pd
+
+MAX_NUMBER = 49
+
+
+def generate_sample_data(path: str | Path, count: int = 250):
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    start_date = datetime(2023, 1, 2)
+    rows = []
+    for idx in range(1, count + 1):
+        date_value = (start_date + timedelta(days=idx * 3)).strftime('%Y-%m-%d')
+        nums = sorted(random.sample(range(1, MAX_NUMBER + 1), 6))
+        rows.append({
+            'draw_id': idx,
+            'date': date_value,
+            'n1': nums[0],
+            'n2': nums[1],
+            'n3': nums[2],
+            'n4': nums[3],
+            'n5': nums[4],
+            'n6': nums[5],
+        })
+
+    pd.DataFrame(rows).to_csv(target, index=False)
+    print(f"Generated {count} sample draws at {target}")
+
+
+if __name__ == '__main__':
+    generate_sample_data('data/sample_draws.csv')

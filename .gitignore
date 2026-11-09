@@ -1,0 +1,12 @@
+# Lottery Data Lab
+
+This project is a local, browser-based lottery analysis dashboard built with FastAPI and modern frontend JS.
+
+Features:
+- Import lottery CSV files
+- Analyze hot/cold numbers
+- Show odd/even, high/low, and sum distribution
+- Rank numbers using an AI-style learning model
+- Review dashboard trends in a single page
+
+This tool is for data analysis and research only. It does not guarantee winning numbers.
