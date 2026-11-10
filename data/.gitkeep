@@ -1,0 +1,42 @@
+# Lottery Data Lab
+
+This is a lightweight lottery analysis dashboard for viewing historical data, hot/cold frequency, missing numbers, recent trends, and an AI-style ranking module.
+
+Important:
+- It does not guarantee lottery results.
+- It is an analysis and research tool, not a prediction engine.
+- It is intended for local use with your own historical draw data.
+
+## Run locally
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Open:
+
+```text
+http://127.0.0.1:8000/
+```
+
+## CSV format
+
+Supported formats:
+
+```csv
+draw_id,date,n1,n2,n3,n4,n5,n6
+1,2024-01-01,3,8,12,19,28,35
+2,2024-01-04,5,9,17,22,29,43
+```
+
+or:
+
+```csv
+draw_id,date,numbers
+1,2024-01-01,"3,8,12,19,28,35"
+```
+
+The project saves uploaded data to `data/active_draws.csv` for quick reuse.

@@ -1,119 +1,87 @@
-document.addEventListener('DOMContentLoaded', () => {
-  const overviewEl = document.getElementById('overview');
-  const hotList = document.getElementById('hot-list');
-  const coldList = document.getElementById('cold-list');
-  const aiRanking = document.getElementById('ai-ranking');
-  const missingList = document.getElementById('missing-list');
-  const distributionList = document.getElementById('distribution-list');
-  const alertBox = document.getElementById('upload-alert');
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lottery Data Lab</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">LOTTERY DATA LAB</p>
+          <h1>彩票数据分析平台</h1>
+        </div>
+        <span class="status-badge">AI 数据研究</span>
+      </header>
 
-  async function loadOverview() {
-    const response = await fetch('/api/overview');
-    const data = await response.json();
+      <section class="toolbar">
+        <form id="upload-form">
+          <label for="csv-file">导入 CSV</label>
+          <input id="csv-file" type="file" accept=".csv,text/csv" />
+          <button type="submit">更新分析</button>
+        </form>
+        <button id="reset-demo" class="secondary" type="button">恢复演示数据</button>
+      </section>
 
-    if (data.error) {
-      alertBox.textContent = data.error;
-      alertBox.style.display = 'block';
-      return;
-    }
+      <div id="message" class="message">加载中…</div>
 
-    document.getElementById('draw-count').textContent = data.draw_count;
-    document.getElementById('source-name').textContent = data.source;
-    document.getElementById('min-max').textContent = `${data.min_number} - ${data.max_number}`;
+      <section class="metrics">
+        <div class="card">
+          <span>数据期数</span>
+          <strong id="draw-count">0</strong>
+        </div>
+        <div class="card">
+          <span>数据源</span>
+          <strong id="source">demo</strong>
+        </div>
+        <div class="card">
+          <span>最大号码</span>
+          <strong>49</strong>
+        </div>
+        <div class="card">
+          <span>分析模块</span>
+          <strong>20</strong>
+        </div>
+      </section>
 
-    renderList(hotList, data.hot_numbers.slice(0, 10));
-    renderList(coldList, data.cold_numbers.slice(0, 10));
-    renderList(missingList, data.missing_numbers.slice(0, 12));
-    renderDistribution(distributionList, data.distribution);
-    renderAiRanking(aiRanking, data.ai_ranking.top_numbers);
-  }
+      <section class="grid">
+        <div class="panel">
+          <h2>热点号码</h2>
+          <ul id="hot-list"></ul>
+        </div>
+        <div class="panel">
+          <h2>冷门号码</h2>
+          <ul id="cold-list"></ul>
+        </div>
+        <div class="panel">
+          <h2>缺失号码</h2>
+          <div id="missing-list" class="chips"></div>
+        </div>
+        <div class="panel">
+          <h2>近期热度</h2>
+          <ul id="recent-list"></ul>
+        </div>
+      </section>
 
-  function renderList(el, items) {
-    if (!items || !items.length) {
-      el.innerHTML = '<li>暂无数据</li>';
-      return;
-    }
+      <section class="grid second">
+        <div class="panel">
+          <h2>分布摘要</h2>
+          <ul id="distribution-list"></ul>
+        </div>
+        <div class="panel">
+          <h2>AI 学习排序</h2>
+          <div id="ai-ranking" class="chips tall"></div>
+        </div>
+      </section>
 
-    el.innerHTML = items.map(item => `
-      <li>
-        <span>${item.number}</span>
-        <strong>${item.value}</strong>
-      </li>
-    `).join('');
-  }
+      <section class="panel full">
+        <h2>20 个分析模块</h2>
+        <div id="module-list" class="module-grid"></div>
+      </section>
+    </div>
 
-  function renderDistribution(el, dist) {
-    if (!dist || !dist.length) {
-      el.innerHTML = '<li>暂无数据</li>';
-      return;
-    }
-
-    el.innerHTML = dist.map(item => `
-      <li>
-        <span>${item.label}</span>
-        <strong>${item.value}</strong>
-      </li>
-    `).join('');
-  }
-
-  function renderAiRanking(el, items) {
-    if (!items || !items.length) {
-      el.innerHTML = '<li>暂无数据</li>';
-      return;
-    }
-
-    el.innerHTML = items.map(item => `
-      <div class="inline-numbers">
-        <span class="number-pill">${item.number}</span>
-      </div>
-    `).join('');
-  }
-
-  document.getElementById('upload-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const formData = new FormData();
-    const fileInput = document.getElementById('csv-file');
-    const file = fileInput.files[0];
-    if (!file) {
-      alertBox.textContent = '请选择 CSV 文件。';
-      alertBox.style.display = 'block';
-      return;
-    }
-
-    formData.append('file', file);
-    const response = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData,
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      alertBox.textContent = data.error || '上传失败';
-      alertBox.style.display = 'block';
-      return;
-    }
-
-    alertBox.textContent = `已加载 ${data.filename}，共 ${data.draw_count} 期数据。`;
-    alertBox.style.display = 'block';
-
-    renderList(hotList, data.hot_numbers.slice(0, 10));
-    renderList(coldList, data.cold_numbers.slice(0, 10));
-    renderList(missingList, data.missing_numbers.slice(0, 12));
-    renderDistribution(distributionList, data.distribution);
-    renderAiRanking(aiRanking, data.ai_ranking.top_numbers);
-
-    document.getElementById('draw-count').textContent = data.draw_count;
-    document.getElementById('source-name').textContent = data.filename;
-  });
-
-  document.getElementById('retrain-btn').addEventListener('click', async () => {
-    const response = await fetch('/api/retrain');
-    const data = await response.json();
-    alertBox.textContent = data.message || '模型已重训';
-    alertBox.style.display = 'block';
-    renderAiRanking(aiRanking, data.top_numbers);
-  });
-
-  loadOverview();
-});
+    <script src="/static/app.js"></script>
+  </body>
+</html>

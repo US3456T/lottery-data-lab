@@ -1,34 +1,280 @@
-from pathlib import Path
-import random
-from datetime import datetime, timedelta
-import pandas as pd
+from __future__ import annotations
 
+import csv
+import random
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
+DATA_DIR.mkdir(exist_ok=True)
+ACTIVE_FILE = DATA_DIR / "active_draws.csv"
 MAX_NUMBER = 49
 
+app = FastAPI(title="Lottery Data Lab")
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-def generate_sample_data(path: str | Path, count: int = 250):
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
 
-    start_date = datetime(2023, 1, 2)
-    rows = []
+def _make_demo_draws(count: int = 200) -> list[dict[str, Any]]:
+    rng = random.Random(42)
+    draws: list[dict[str, Any]] = []
     for idx in range(1, count + 1):
-        date_value = (start_date + timedelta(days=idx * 3)).strftime('%Y-%m-%d')
-        nums = sorted(random.sample(range(1, MAX_NUMBER + 1), 6))
-        rows.append({
-            'draw_id': idx,
-            'date': date_value,
-            'n1': nums[0],
-            'n2': nums[1],
-            'n3': nums[2],
-            'n4': nums[3],
-            'n5': nums[4],
-            'n6': nums[5],
+        numbers = sorted(rng.sample(range(1, MAX_NUMBER + 1), 6))
+        draws.append({
+            "draw_id": str(idx),
+            "date": f"2024-01-{(idx % 28) + 1:02d}",
+            "numbers": numbers,
         })
-
-    pd.DataFrame(rows).to_csv(target, index=False)
-    print(f"Generated {count} sample draws at {target}")
+    return draws
 
 
-if __name__ == '__main__':
-    generate_sample_data('data/sample_draws.csv')
+def _normalize_numbers(raw: Any) -> list[int]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        text = raw.replace(";", ",").replace("|", ",").replace(" ", ",")
+        items = [part.strip() for part in text.split(",") if part.strip()]
+    elif isinstance(raw, (list, tuple)):
+        items = [str(x).strip() for x in raw if str(x).strip()]
+    else:
+        items = [str(raw).strip()]
+
+    numbers: list[int] = []
+    for item in items:
+        try:
+            value = int(item)
+        except ValueError:
+            continue
+        if 1 <= value <= MAX_NUMBER:
+            numbers.append(value)
+    return numbers
+
+
+def _parse_csv_rows(content: bytes) -> list[dict[str, Any]]:
+    text = content.decode("utf-8-sig")
+    reader = csv.DictReader(text.splitlines())
+    if reader.fieldnames is None:
+        return []
+
+    fieldnames = [name.strip().lower() for name in reader.fieldnames]
+    columns = {name: original for name, original in zip(fieldnames, reader.fieldnames)}
+    normalized: list[dict[str, Any]] = []
+    for row in reader:
+        draw_id = (row.get(columns.get("draw_id", "")) or "").strip()
+        date = (row.get(columns.get("date", "")) or "").strip()
+        numbers: list[int] = []
+
+        if "numbers" in columns:
+            numbers = _normalize_numbers(row.get(columns["numbers"]))
+        else:
+            for field in reader.fieldnames:
+                key = field.strip().lower()
+                if key.startswith("n") and key[1:].isdigit():
+                    numbers.extend(_normalize_numbers(row.get(field)))
+
+        if len(numbers) >= 6:
+            unique = sorted(set(numbers))
+            if len(unique) >= 6:
+                normalized.append({
+                    "draw_id": draw_id or str(len(normalized) + 1),
+                    "date": date or "",
+                    "numbers": unique[:6],
+                })
+
+    return normalized
+
+
+def save_draws(draws: list[dict[str, Any]]) -> None:
+    with ACTIVE_FILE.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(["draw_id", "date", "n1", "n2", "n3", "n4", "n5", "n6"])
+        for draw in draws:
+            nums = list(draw["numbers"])[:6]
+            if len(nums) < 6:
+                nums.extend([0] * (6 - len(nums)))
+            writer.writerow([draw.get("draw_id", ""), draw.get("date", ""), *nums])
+
+
+def load_active_draws() -> list[dict[str, Any]]:
+    if not ACTIVE_FILE.exists():
+        demo = _make_demo_draws()
+        save_draws(demo)
+        return demo
+
+    try:
+        with ACTIVE_FILE.open("r", newline="", encoding="utf-8") as file:
+            reader = csv.DictReader(file)
+            rows: list[dict[str, Any]] = []
+            for row in reader:
+                numbers = []
+                for key in sorted(row.keys()):
+                    if key.lower().startswith("n") and key[1:].isdigit():
+                        numbers.extend(_normalize_numbers(row.get(key, "")))
+                if numbers:
+                    unique = sorted(set(numbers))
+                    rows.append({
+                        "draw_id": row.get("draw_id", "") or str(len(rows) + 1),
+                        "date": row.get("date", "") or "",
+                        "numbers": unique[:6],
+                    })
+            return rows or _make_demo_draws()
+    except Exception:
+        demo = _make_demo_draws()
+        save_draws(demo)
+        return demo
+
+
+def _calc_hot_cold(draws: list[dict[str, Any]]) -> tuple[list[dict[str, int]], list[dict[str, int]], list[int]]:
+    counts: dict[int, int] = {}
+    for draw in draws:
+        for n in draw["numbers"]:
+            counts[n] = counts.get(n, 0) + 1
+
+    hot = [{"number": n, "value": counts[n]} for n in sorted(counts, key=lambda x: (-counts[x], x))[:10]]
+    cold = [{"number": n, "value": counts[n]} for n in sorted(counts, key=lambda x: (counts[x], x))[:10]]
+    missing = [n for n in range(1, MAX_NUMBER + 1) if n not in counts]
+    return hot, cold, missing
+
+
+def _distribution(draws: list[dict[str, Any]]) -> dict[str, float | int | list[dict[str, float | int]]]:
+    total_numbers = [n for draw in draws for n in draw["numbers"]]
+    odd_count = sum(1 for n in total_numbers if n % 2 == 1)
+    even_count = sum(1 for n in total_numbers if n % 2 == 0)
+    low_count = sum(1 for n in total_numbers if n <= 24)
+    high_count = sum(1 for n in total_numbers if n > 24)
+    sums = [sum(draw["numbers"]) for draw in draws]
+    avg_sum = round(sum(sums) / len(sums), 2) if sums else 0
+    return {
+        "odd": odd_count,
+        "even": even_count,
+        "low": low_count,
+        "high": high_count,
+        "avg_sum": avg_sum,
+    }
+
+
+def _ai_ranking(draws: list[dict[str, Any]]) -> list[dict[str, float | int]]:
+    if not draws:
+        return []
+    counts: dict[int, int] = {}
+    recent_counts: dict[int, int] = {}
+    recent_window = draws[-20:]
+    for draw in draws:
+        for n in draw["numbers"]:
+            counts[n] = counts.get(n, 0) + 1
+    for draw in recent_window:
+        for n in draw["numbers"]:
+            recent_counts[n] = recent_counts.get(n, 0) + 1
+
+    max_total = max(counts.values()) if counts else 1
+    max_recent = max(recent_counts.values()) if recent_counts else 1
+    ranked: list[dict[str, float | int]] = []
+    for n in range(1, MAX_NUMBER + 1):
+        score = (counts.get(n, 0) / max_total) * 0.7 + (recent_counts.get(n, 0) / max_recent) * 0.3
+        ranked.append({"number": n, "score": round(score, 4)})
+    ranked.sort(key=lambda x: (-x["score"], x["number"]))
+    return ranked[:20]
+
+
+def analyze_draws(draws: list[dict[str, Any]]) -> dict[str, Any]:
+    if not draws:
+        return {"draw_count": 0, "hot_numbers": [], "cold_numbers": [], "missing_numbers": [], "recent_numbers": [], "distribution": {}, "ai_ranking": [], "modules": []}
+
+    hot, cold, missing = _calc_hot_cold(draws)
+    recent_window = draws[-20:]
+    recent_counts: dict[int, int] = {}
+    for draw in recent_window:
+        for n in draw["numbers"]:
+            recent_counts[n] = recent_counts.get(n, 0) + 1
+    recent_numbers = [{"number": n, "value": recent_counts[n]} for n in sorted(recent_counts, key=lambda x: (-recent_counts[x], x))[:10]]
+    dist = _distribution(draws)
+    ranking = _ai_ranking(draws)
+
+    modules = [
+        "Frequency coverage",
+        "Recent hot streak",
+        "Cold numbers",
+        "Missing numbers",
+        "Odd/even balance",
+        "Low/high split",
+        "Average draw sum",
+        "AI score ranking",
+        "Forward-looking summary",
+        "Recent trend drift",
+        "Number gap map",
+        "Consecutive value signal",
+        "Even-odd ratio",
+        "High-low ratio",
+        "Dataset validation",
+        "Upload refresh",
+        "Reset to demo",
+        "Distribution analysis",
+        "Statistical smoothing",
+        "Learning score",
+    ]
+
+    return {
+        "draw_count": len(draws),
+        "hot_numbers": hot,
+        "cold_numbers": cold,
+        "missing_numbers": missing,
+        "recent_numbers": recent_numbers,
+        "distribution": dist,
+        "ai_ranking": ranking,
+        "modules": modules,
+    }
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+
+@app.get("/api/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/api/overview")
+async def overview() -> dict[str, Any]:
+    draws = load_active_draws()
+    result = analyze_draws(draws)
+    result["source"] = "demo" if ACTIVE_FILE.exists() and len(draws) >= 1 else "uploaded"
+    return result
+
+
+@app.post("/api/upload")
+async def upload(file: UploadFile = File(...)) -> dict[str, Any]:
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Please upload a CSV file.")
+
+    content = await file.read()
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="CSV file too large.")
+
+    rows = _parse_csv_rows(content)
+    if not rows:
+        raise HTTPException(status_code=400, detail="No valid draw rows found. Use six unique numbers from 1–49 per draw, or n1..n6 columns.")
+
+    save_draws(rows)
+    result = analyze_draws(rows)
+    result["source"] = "uploaded"
+    return result
+
+
+@app.post("/api/reset-demo")
+async def reset_demo() -> dict[str, Any]:
+    demo = _make_demo_draws()
+    save_draws(demo)
+    return analyze_draws(demo)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
