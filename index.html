@@ -542,10 +542,6 @@ function askAll(){
   const selectedEngines = ENGINES.filter(e=>checkedEngines.has(e.id));
   if(!selectedEngines.length){alert("请先勾选左侧至少一个工具");return;}
 
-  selectedEngines.forEach(engine=>{
-    const card=document.createElement("div");
-    card.className="chat-card";
-    card.innerHTML=`<div class="engine-name">🔗 ${engine.name}（${engine.vendor}）</div>
   // 显示选中的引擎列表（带链接，用户自己点）
   selectedEngines.forEach((engine) => {
     const card = document.createElement("div");
