@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI 工作室 · 在线版</title>
+<script src="https://js.puter.com/v2/"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -68,8 +69,8 @@ button.primary:hover { background: var(--accent); }
     <div class="engine-actions">
       <button class="mini" onclick="checkAll()">全选</button>
       <button class="mini" onclick="checkNone()">清空</button>
-      <button class="mini" onclick="checkCore()">核心</button>
-      <button class="mini" onclick="checkForm()">形态</button>
+      <button class="mini" onclick="checkRecommend()">推荐</button>
+      <button class="mini" onclick="checkChinese()">中文</button>
     </div>
     <ul class="engine-list" id="engine-list"></ul>
   </aside>
@@ -161,30 +162,30 @@ function makeZodiacMap(yz) {
 const ZOY={}; for(const z of["鼠","牛","虎","兔","龙","蛇","马","羊","猴","鸡","狗","猪"]) ZOY[z]=makeZodiacMap(z);
 const ZODIAC_INPUT={"马":[1,13,25,37,49],"蛇":[2,14,26,38],"龙":[3,15,27,39],"兔":[4,16,28,40],"虎":[5,17,29,41],"牛":[6,18,30,42],"鼠":[7,19,31,43],"猪":[8,20,32,44],"狗":[9,21,33,45],"鸡":[10,22,34,46],"猴":[11,23,35,47],"羊":[12,24,36,48]};
 
-// ===== 引擎列表（20个规则AI）=====
+// ===== 引擎列表（20个AI模型）=====
 const ENGINES = [
-  {id:"e01",name:"AI·频次冷热",vendor:"分析引擎",size:"-",desc:"全量+近30期冷热排名",tag:"核心",kind:"rule"},
-  {id:"e02",name:"AI·生肖热度",vendor:"分析引擎",size:"-",desc:"12生肖出现频次排序",tag:"生肖",kind:"rule"},
-  {id:"e03",name:"AI·单双走势",vendor:"分析引擎",size:"-",desc:"特码单双比例分析",tag:"属性",kind:"rule"},
-  {id:"e04",name:"AI·大小走势",vendor:"分析引擎",size:"-",desc:"特码大小分布统计",tag:"属性",kind:"rule"},
-  {id:"e05",name:"AI·波色分布",vendor:"分析引擎",size:"-",desc:"红蓝绿波色频率",tag:"波色",kind:"rule"},
-  {id:"e06",name:"AI·尾数统计",vendor:"分析引擎",size:"-",desc:"0-9尾数出现频率",tag:"尾数",kind:"rule"},
-  {id:"e07",name:"AI·合数分析",vendor:"分析引擎",size:"-",desc:"号码合数大小排序",tag:"合数",kind:"rule"},
-  {id:"e08",name:"AI·头数分析",vendor:"分析引擎",size:"-",desc:"0-4头分布统计",tag:"头数",kind:"rule"},
-  {id:"e09",name:"AI·连号检测",vendor:"分析引擎",size:"-",desc:"相邻连号出现概率",tag:"形态",kind:"rule"},
-  {id:"e10",name:"AI·重号分析",vendor:"分析引擎",size:"-",desc:"与上期重号统计",tag:"形态",kind:"rule"},
-  {id:"e11",name:"AI·邻号分析",vendor:"分析引擎",size:"-",desc:"邻号出现频率",tag:"形态",kind:"rule"},
-  {id:"e12",name:"AI·区间分布",vendor:"分析引擎",size:"-",desc:"01-12/13-24/25-36/37-49",tag:"区间",kind:"rule"},
-  {id:"e13",name:"AI·奇偶比",vendor:"分析引擎",size:"-",desc:"全号奇偶比例",tag:"属性",kind:"rule"},
-  {id:"e14",name:"AI·隔期重号",vendor:"分析引擎",size:"-",desc:"隔一期重号规律",tag:"形态",kind:"rule"},
-  {id:"e15",name:"AI·生肖合局",vendor:"分析引擎",size:"-",desc:"同生肖聚集度",tag:"生肖",kind:"rule"},
-  {id:"e16",name:"AI·波色走势",vendor:"分析引擎",size:"-",desc:"近30期波色连续走势",tag:"波色",kind:"rule"},
-  {id:"e17",name:"AI·尾数冷热",vendor:"分析引擎",size:"-",desc:"尾数冷热对比",tag:"尾数",kind:"rule"},
-  {id:"e18",name:"AI·斜连号",vendor:"分析引擎",size:"-",desc:"斜向连号规律",tag:"形态",kind:"rule"},
-  {id:"e19",name:"AI·综合评分",vendor:"分析引擎",size:"-",desc:"多维度加权打分",tag:"综合",kind:"rule"},
-  {id:"e20",name:"AI·触发-滞后",vendor:"分析引擎",size:"-",desc:"触发期下一期分布+回测",tag:"核心",kind:"rule"},
+  {id:"gpt-nano",name:"GPT-5.4 Nano",vendor:"OpenAI",size:"-",desc:"快速高效，日常问答首选",tag:"推荐",model:"openai/gpt-5.4-nano"},
+  {id:"gpt-mini",name:"GPT-5.4 Mini",vendor:"OpenAI",size:"-",desc:"平衡速度与质量",tag:"热门",model:"openai/gpt-5.4-mini"},
+  {id:"gpt-pro",name:"GPT-5.4 Pro",vendor:"OpenAI",size:"-",desc:"最强推理，复杂分析",tag:"旗舰",model:"openai/gpt-5.4-pro"},
+  {id:"claude",name:"Claude Sonnet 5.5",vendor:"Anthropic",size:"-",desc:"长文理解强，写作优秀",tag:"写作",model:"anthropic/claude-sonnet-5-5"},
+  {id:"gemini",name:"Gemini 3.1 Pro",vendor:"Google",size:"-",desc:"逻辑推理强，数学好",tag:"推理",model:"google/gemini-3.1-pro-preview"},
+  {id:"deepseek",name:"DeepSeek R1",vendor:"深度求索",size:"-",desc:"中文推理强，数学好",tag:"中文",model:"deepseek/deepseek-r1"},
+  {id:"grok",name:"Grok 4.7",vendor:"xAI",size:"-",desc:"实时信息，幽默风格",tag:"实时",model:"x-ai/grok-4.7"},
+  {id:"llama",name:"Llama 3.3 70B",vendor:"Meta",size:"-",desc:"开源最强，英文好",tag:"开源",model:"meta/llama-3.3-70b-instruct"},
+  {id:"qwen",name:"Qwen 2.5 72B",vendor:"阿里通义",size:"-",desc:"中文理解最强",tag:"中文",model:"qwen/qwen-2.5-72b-instruct"},
+  {id:"mistral",name:"Mistral Large",vendor:"Mistral AI",size:"-",desc:"欧洲最强，多语言",tag:"多语言",model:"mistralai/mistral-large-2411"},
+  {id:"phi",name:"Phi-4",vendor:"微软",size:"-",desc:"小模型大智慧",tag:"轻量",model:"microsoft/phi-4"},
+  {id:"gemma",name:"Gemma 3 27B",vendor:"Google",size:"-",desc:"Google开源模型",tag:"开源",model:"google/gemma-3-27b-it"},
+  {id:"yi",name:"Yi 34B",vendor:"零一万物",size:"-",desc:"中文创作强",tag:"创作",model:"01-ai/yi-34b-chat"},
+  {id:"baichuan",name:"Baichuan 2",vendor:"百川智能",size:"-",desc:"中文对话优化",tag:"对话",model:"baichuan-inc/baichuan2-13b-chat"},
+  {id:"yi-light",name:"Yi 9B",vendor:"零一万物",size:"-",desc:"快速轻量",tag:"快速",model:"01-ai/yi-9b-chat"},
+  {id:"llama-8b",name:"Llama 3.1 8B",vendor:"Meta",size:"-",desc:"最小最快",tag:"极速",model:"meta/llama-3.1-8b-instruct"},
+  {id:"qwen-7b",name:"Qwen 2.5 7B",vendor:"阿里通义",size:"-",desc:"中文轻量",tag:"轻量",model:"qwen/qwen-2.5-7b-instruct"},
+  {id:"deepseek-7b",name:"DeepSeek 7B",vendor:"深度求索",size:"-",desc:"中文推理小模型",tag:"中文",model:"deepseek/deepseek-7b-chat"},
+  {id:"mixtral",name:"Mixtral 8x7B",vendor:"Mistral AI",size:"-",desc:"混合专家模型",tag:"混合",model:"mistralai/mixtral-8x7b-instruct"},
+  {id:"command",name:"Command R+",vendor:"Cohere",size:"-",desc:"企业级，长上下文",tag:"长文",model:"cohere/command-r-plus"},
 ];
-let checkedEngines = new Set(["e01","e19","e20"]);
+let checkedEngines = new Set(["gpt-nano","deepseek","qwen"]);
 
 // ===== 数据 =====
 let draws = [];
@@ -274,8 +275,8 @@ function renderEngines(){
 }
 function checkAll(){checkedEngines=new Set(ENGINES.map(e=>e.id));renderEngines();}
 function checkNone(){checkedEngines.clear();renderEngines();}
-function checkCore(){checkedEngines=new Set(ENGINES.filter(e=>e.tag==="核心"||e.tag==="综合").map(e=>e.id));renderEngines();}
-function checkForm(){checkedEngines=new Set(ENGINES.filter(e=>e.tag==="形态").map(e=>e.id));renderEngines();}
+function checkRecommend(){checkedEngines=new Set(ENGINES.filter(e=>e.tag==="推荐"||e.tag==="热门"||e.tag==="旗舰").map(e=>e.id));renderEngines();}
+function checkChinese(){checkedEngines=new Set(ENGINES.filter(e=>e.tag==="中文").map(e=>e.id));renderEngines();}
 
 // ===== Tab切换 =====
 document.querySelectorAll(".tab").forEach(btn=>{
@@ -382,28 +383,30 @@ function genBacktest(){
 ${seq}`;
 }
 
-function askAll(){
+async function askAll(){
   const q=document.getElementById("question").value.trim();
   if(!q){alert("请输入问题");return;}
   const out=document.getElementById("chat-out");
   out.innerHTML="";
-  // 智能识别：问"预测"直接出报告
-  if(/预测|下一期|报告|智能/.test(q)){
-    const r=predictionReport(30);
-    if(r.ok){
-      out.innerHTML=`<div class="chat-card"><div class="engine-name">📊 规则·智能预测</div><div class="content">${
-`基于 ${r.total} 期数据：
-黄金4肖：${r.zs.slice(0,4).join(" ")}
-最可能6肖：${r.zs.slice(0,6).join(" ")}
-24个特码：${r.m24.map(pad2).join(" ")}
-重点单双：${r.fp}　大小：${r.fs}
 
-声明：基于历史统计，仅供参考。`}</div></div>`;
-      return;
+  const selectedEngines = ENGINES.filter(e=>checkedEngines.has(e.id));
+  if(!selectedEngines.length){alert("请先勾选左侧至少一个AI引擎");return;}
+
+  for(const engine of selectedEngines){
+    const card=document.createElement("div");
+    card.className="chat-card";
+    card.innerHTML=`<div class="engine-name">🤖 ${engine.name}（${engine.vendor}）</div><div class="content" style="color:#666">思考中...</div>`;
+    out.appendChild(card);
+    const contentDiv=card.querySelector(".content");
+
+    try {
+      const response = await puter.ai.chat(q, { model: engine.model });
+      contentDiv.textContent = response.message?.content?.[0]?.text || response;
+    } catch(e) {
+      contentDiv.textContent = "出错了：" + e.message;
+      contentDiv.style.color = "#991b1b";
     }
   }
-  // 否则显示提示
-  out.innerHTML=`<div class="chat-card"><div class="engine-name">💡 在线版</div><div class="content">LLM 大模型对话需要本地 Ollama 支持。在线版已内置规则引擎统计功能，请用"🔮 智能预测"tab 生成完整报告，或输入"帮我预测下一期"试试。</div></div>`;
 }
 
 function newChat(){document.getElementById("chat-out").innerHTML="";document.getElementById("question").value="";}
