@@ -566,20 +566,19 @@ function newChat(){document.getElementById("chat-out").innerHTML="";document.get
 // ===== 启动 =====
 renderEngines();
 
-// 拖拽文件
+// 拖拽文件（整个页面都能拖）
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
 
 dropZone.onclick = () => fileInput.click();
 fileInput.onchange = (e) => { if(e.target.files[0]) handleFile(e.target.files[0]); };
 
-dropZone.ondragover = (e) => { e.preventDefault(); dropZone.style.background = "#e0e0e0"; };
-dropZone.ondragleave = () => { dropZone.style.background = "var(--card)"; };
-dropZone.ondrop = (e) => {
+// 阻止浏览器默认拖拽行为（防止拖文件直接打开新页面）
+document.addEventListener("dragover", (e) => { e.preventDefault(); });
+document.addEventListener("drop", (e) => {
   e.preventDefault();
-  dropZone.style.background = "var(--card)";
   if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
-};
+});
 
 const d = [];
 setData(d);
