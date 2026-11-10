@@ -97,9 +97,10 @@ button.primary:hover { background: var(--accent); }
 
     <div class="tab-pane" id="pane-data">
       <div class="row" style="align-items:center;gap:8px;margin-bottom:12px;">
-        <button class="primary" onclick="importData()">导入</button>
+        <button class="primary" onclick="importData()">导入粘贴的内容</button>
+        <button class="primary" onclick="document.getElementById('file-input').click()">选择文件</button>
         <button class="danger" onclick="clearData()" style="background:#d32f2f;color:#fff;">清空</button>
-        <span class="hint">粘贴内容或直接把 TXT 文件拖进下面框里，点"导入"</span>
+        <input type="file" id="file-input" accept=".txt,.csv" style="display:none;">
       </div>
       <textarea id="data-input" rows="5" style="width:100%;background:var(--card);border:1px dashed var(--border);padding:12px;border-radius:4px;font-size:13px;margin-bottom:16px;" placeholder="在这里粘贴你的历史记录，或直接把 TXT 文件拖进来..."></textarea>
       <h3>全部历史记录</h3>
@@ -368,7 +369,8 @@ document.querySelectorAll(".tab").forEach(btn=>{
 function setData(d){
   draws=d;
   detectYearBoundaries();
-  document.getElementById("data-info").textContent=`共 ${draws.length} 期：${draws[0]?.issue} → ${draws[draws.length-1]?.issue}`;
+  const info = document.getElementById("data-info");
+  if(info) info.textContent=`共 ${draws.length} 期：${draws[0]?.issue} → ${draws[draws.length-1]?.issue}`;
   document.getElementById("status-bar").textContent=`在线 · ${draws.length}期`;
   renderDrawList();
 }
@@ -567,10 +569,8 @@ function newChat(){document.getElementById("chat-out").innerHTML="";document.get
 renderEngines();
 
 // 拖拽文件（整个页面都能拖）
-const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
 
-dropZone.onclick = () => fileInput.click();
 fileInput.onchange = (e) => { if(e.target.files[0]) handleFile(e.target.files[0]); };
 
 // 阻止浏览器默认拖拽行为（防止拖文件直接打开新页面）
