@@ -266,16 +266,28 @@ function renderEngines(){
   const ul=document.getElementById("engine-list"); ul.innerHTML="";
   ENGINES.forEach(e=>{
     const li=document.createElement("li");
-    const readyTag='<span class="tag ready">点击打开</span>';
-    li.innerHTML=`<div class="name">${e.name} <span class="tag">${e.tag}</span></div><div class="meta">${e.vendor} · ${e.desc}</div>${readyTag}`;
-    li.onclick=()=>{window.open(e.url, "_blank");};
+    if(checkedEngines.has(e.id)) li.classList.add("checked");
+    const readyTag='<span class="tag ready">在线</span>';
+    const checked = checkedEngines.has(e.id) ? "checked" : "";
+    li.innerHTML=`<div style="display:flex;gap:8px;align-items:flex-start;">
+      <input type="checkbox" ${checked} style="margin-top:3px;cursor:pointer;">
+      <div style="flex:1">
+        <div class="name">${e.name} <span class="tag">${e.tag}</span></div>
+        <div class="meta">${e.vendor} · ${e.desc}</div>${readyTag}
+      </div>
+    </div>`;
+    li.onclick=()=>{
+      if(checkedEngines.has(e.id)){checkedEngines.delete(e.id);li.classList.remove("checked");}
+      else{checkedEngines.add(e.id);li.classList.add("checked");}
+      renderEngines();
+    };
     ul.appendChild(li);
   });
 }
-function checkAll(){ENGINES.forEach(e=>window.open(e.url, "_blank"));}
-function checkNone(){window.close();}
-function checkAI(){ENGINES.filter(e=>e.tag==="AI").forEach(e=>window.open(e.url, "_blank"));}
-function checkWeb(){ENGINES.filter(e=>e.vendor==="Web").forEach(e=>window.open(e.url, "_blank"));}
+function checkAll(){checkedEngines=new Set(ENGINES.map(e=>e.id));renderEngines();}
+function checkNone(){checkedEngines.clear();renderEngines();}
+function checkAI(){checkedEngines=new Set(ENGINES.filter(e=>e.tag==="AI").map(e=>e.id));renderEngines();}
+function checkWeb(){checkedEngines=new Set(ENGINES.filter(e=>e.vendor==="Web").map(e=>e.id));renderEngines();}
 
 // ===== Tab切换 =====
 document.querySelectorAll(".tab").forEach(btn=>{
@@ -383,14 +395,13 @@ ${seq}`;
 }
 
 function askAll(){
-  const q=document.getElementById("question").value.trim();
   const out=document.getElementById("chat-out");
   out.innerHTML="";
 
   const selectedEngines = ENGINES.filter(e=>checkedEngines.has(e.id));
   if(!selectedEngines.length){alert("请先勾选左侧至少一个工具");return;}
 
-  selectedEngines.forEach((engine, i)=>{
+  selectedEngines.forEach(engine=>{
     const card=document.createElement("div");
     card.className="chat-card";
     card.innerHTML=`<div class="engine-name">🔗 ${engine.name}（${engine.vendor}）</div>
@@ -399,12 +410,9 @@ function askAll(){
     out.appendChild(card);
   });
 
-  // 如果输入了问题，也显示一下
-  if(q){
-    const msgDiv=document.createElement("div");
-    msgDiv.style.cssText="padding:10px;background:#e5e7eb;border-radius:6px;margin-bottom:8px;font-size:13px;";
-    msgDiv.textContent="你问：" + q;
-    out.insertBefore(msgDiv, out.firstChild);
+  // 自动打开第一个选中的
+  if(selectedEngines.length>0){
+    window.open(selectedEngines[0].url, "_blank");
   }
 }
 
