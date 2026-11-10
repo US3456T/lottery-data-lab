@@ -217,6 +217,16 @@ function zodiacPropsHtml(z) {
 
 // ===== 引擎列表（20个彩票分析工具）=====
 const ENGINES = [
+  {id:"gpt6luna",name:"GPT-6 Luna",vendor:"AI",desc:"OpenAI大模型，快速高效，适合日常分析",tag:"AI",url:"https://www.doubao.com/chat/"},
+  {id:"gpt54mini",name:"GPT-5.4 mini",vendor:"AI",desc:"OpenAI轻量模型，响应快，适合快速分析",tag:"AI",url:"https://tongyi.aliyun.com/qianwen/"},
+  {id:"claudehaiku",name:"Claude Haiku 5.5",vendor:"AI",desc:"Anthropic模型，快速精准，适合语义分析",tag:"AI",url:"https://chatglm.cn/"},
+  {id:"kimik3",name:"Kimi K3",vendor:"AI",desc:"月之暗面最新模型，超长文本，适合大量数据",tag:"AI",url:"https://kimi.moonshot.cn/"},
+  {id:"gpt61terra",name:"GPT-6.1 Terra",vendor:"AI",desc:"OpenAI最新模型，推理能力强，适合复杂分析",tag:"AI",url:"https://yuanbao.tencent.com/"},
+  {id:"gpt56terra",name:"GPT-5.6 Terra",vendor:"AI",desc:"OpenAI平衡模型，性能均衡，适合综合分析",tag:"AI",url:"https://xinghuo.xfyun.cn/"},
+  {id:"claudesonnet55",name:"Claude Sonnet 5.5",vendor:"AI",desc:"Anthropic最新模型，推理强，适合深度分析",tag:"AI",url:"https://www.baichuan-ai.com/"},
+  {id:"claudesonnet5",name:"Claude Sonnet 5",vendor:"AI",desc:"Anthropic上一代模型，稳定可靠，适合常规分析",tag:"AI",url:"https://www.lingyiwanwu.com/"},
+  {id:"claudesonnet46",name:"Claude Sonnet 4.6",vendor:"AI",desc:"Anthropic经典模型，长文本生成，适合报告写作",tag:"AI",url:"https://www.stepfun.com/"},
+  {id:"zai",name:"Z.ai (GLM-5.3)",vendor:"AI",desc:"智谱最新GLM模型，高级AI对话+智能体",tag:"AI",url:"https://zchat.z.ai/"},
   {id:"doubao",name:"豆包AI",vendor:"AI",desc:"字节跳动大模型，逻辑推理强，适合数据分析",tag:"AI",url:"https://www.doubao.com/chat/"},
   {id:"tongyi",name:"通义千问",vendor:"AI",desc:"阿里大模型，长文本处理强，适合复杂分析",tag:"AI",url:"https://tongyi.aliyun.com/qianwen/"},
   {id:"wenxin",name:"文心一言",vendor:"AI",desc:"百度大模型，中文理解强，适合语义分析",tag:"AI",url:"https://yiyan.baidu.com/"},
@@ -226,17 +236,7 @@ const ENGINES = [
   {id:"zhipu",name:"智谱清言",vendor:"AI",desc:"智谱AI，推理能力强，适合逻辑分析",tag:"AI",url:"https://chatglm.cn/"},
   {id:"tiangong",name:"天工AI",vendor:"AI",desc:"天工智能，搜索+分析，适合信息整合",tag:"AI",url:"https://www.tiangong.cn/"},
   {id:"360",name:"360智脑",vendor:"AI",desc:"360大模型，安全+分析，适合风险评估",tag:"AI",url:"https://chat.360.com/"},
-  {id:"shangtang",name:"商汤商量",vendor:"AI",desc:"商汤大模型，视觉+文本，适合多模态分析",tag:"AI",url:"https://chat.sensetime.com/"},
   {id:"baichuan",name:"百川智能",vendor:"AI",desc:"百川大模型，长文本生成，适合报告写作",tag:"AI",url:"https://www.baichuan-ai.com/"},
-  {id:"01ai",name:"零一万物",vendor:"AI",desc:"零一万物，创造力强，适合创新分析",tag:"AI",url:"https://www.lingyiwanwu.com/"},
-  {id:"step",name:"阶跃星辰",vendor:"AI",desc:"阶跃星辰，多模态，适合综合分析",tag:"AI",url:"https://www.stepfun.com/"},
-  {id:"yuanqi",name:"元器",vendor:"AI",desc:"字节元器，智能体平台，适合定制分析",tag:"AI",url:"https://yuanqi.tencent.com/"},
-  {id:"hunyuan",name:"腾讯混元",vendor:"AI",desc:"腾讯混元，文本生成，适合内容创作",tag:"AI",url:"https://hunyuan.tencent.com/"},
-  {id:"longcat",name:"美团LongCat",vendor:"AI",desc:"美团大模型，推理能力强，适合逻辑分析",tag:"AI",url:"https://longcat.chat/"},
-  {id:"ernie",name:"百度文心",vendor:"AI",desc:"百度文心，知识图谱，适合知识问答",tag:"AI",url:"https://yiyan.baidu.com/"},
-  {id:"qwen",name:"阿里通义",vendor:"AI",desc:"阿里通义，代码+文本，适合技术分析",tag:"AI",url:"https://tongyi.aliyun.com/"},
-  {id:"spark",name:"讯飞星火",vendor:"AI",desc:"讯飞星火，学习+分析，适合教育场景",tag:"AI",url:"https://xinghuo.xfyun.cn/"},
-  {id:"chatglm",name:"智谱ChatGLM",vendor:"AI",desc:"智谱ChatGLM，开源大模型，适合研究分析",tag:"AI",url:"https://chatglm.cn/"},
 ];
 let checkedEngines = new Set();
 
