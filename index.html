@@ -553,14 +553,11 @@ function askAll(){
     return;
   }
 
-  // 获取选中的AI工具
-  const selectedEngines = ENGINES.filter(e=>checkedEngines.has(e.id));
-  const engineName = selectedEngines.length > 0 ? selectedEngines[0].name : "综合分析";
-
-  out.innerHTML = "<div style='padding:12px;color:#666;'>🤖 " + engineName + " 正在分析你的历史数据...</div>";
+  out.innerHTML = "<div style='padding:12px;color:#666;'>🤖 正在分析你的历史数据，生成详细报告...</div>";
 
   // 统计数据
   const zodiacCount = {};
+  const numberCount = {};
   const waveCount = {红:0, 蓝:0, 绿:0};
   const tailCount = {};
   const headCount = {};
@@ -570,6 +567,7 @@ function askAll(){
   draws.forEach((d, i) => {
     const z = zodiacOf(d.special, i);
     zodiacCount[z] = (zodiacCount[z] || 0) + 1;
+    numberCount[d.special] = (numberCount[d.special] || 0) + 1;
     const w = ballColor(d.special);
     waveCount[w]++;
     const tail = d.special % 10;
@@ -580,63 +578,73 @@ function askAll(){
     if(d.special % 2 === 1) oddCount.单++; else oddCount.双++;
   });
 
+  // 排序
   const sortedZodiac = Object.entries(zodiacCount).sort((a,b) => b[1]-a[1]);
+  const sortedNumber = Object.entries(numberCount).sort((a,b) => b[1]-a[1]);
   const sortedTail = Object.entries(tailCount).sort((a,b) => b[1]-a[1]);
   const sortedHead = Object.entries(headCount).sort((a,b) => b[1]-a[1]);
 
-  // 根据不同AI工具生成不同角度的报告
-  let report = "📊 " + engineName + " 分析报告\n";
-  report += "=".repeat(40) + "\n\n";
+  // 生成详细报告
+  let report = "📊 历史数据全量分析报告\n";
+  report += "=".repeat(50) + "\n\n";
   report += "📈 统计周期：共 " + draws.length + " 期\n\n";
 
-  // 根据AI工具ID选择不同的分析角度
-  const engineId = selectedEngines.length > 0 ? selectedEngines[0].id : "";
+  // 一、生肖预测
+  report += "【生肖预测】\n";
+  const top10 = sortedZodiac.slice(0,10).map(z=>z[0]).join(" ");
+  const top9 = sortedZodiac.slice(0,9).map(z=>z[0]).join(" ");
+  const top8 = sortedZodiac.slice(0,8).map(z=>z[0]).join(" ");
+  const top6 = sortedZodiac.slice(0,6).map(z=>z[0]).join(" ");
+  const top4 = sortedZodiac.slice(0,4).map(z=>z[0]).join(" ");
+  report += `10肖：${top10}\n`;
+  report += `9肖：${top9}\n`;
+  report += `8肖：${top8}\n`;
+  report += `6肖：${top6}\n`;
+  report += `黄金4肖：${top4}\n\n`;
 
-  if(engineId === "gpt6luna" || engineId === "gpt54mini" || engineId === "gpt61terra"){
-    // GPT系列：看生肖频率
-    report += "【生肖频率排行】\n";
-    sortedZodiac.forEach(([z, c], i) => {
-      report += `${i+1}. ${z}：${c}次（${(c/draws.length*100).toFixed(1)}%）\n`;
-    });
-  } else if(engineId === "claudehaiku" || engineId === "claudesonnet55"){
-    // Claude系列：看波色分布
-    report += "【波色分布分析】\n";
-    report += `红波：${waveCount.红}次（${(waveCount.红/draws.length*100).toFixed(1)}%）\n`;
-    report += `蓝波：${waveCount.蓝}次（${(waveCount.蓝/draws.length*100).toFixed(1)}%）\n`;
-    report += `绿波：${waveCount.绿}次（${(waveCount.绿/draws.length*100).toFixed(1)}%）\n\n`;
-    report += "【尾数频率排行（前5）】\n";
-    sortedTail.slice(0,5).forEach(([t, c], i) => {
-      report += `${i+1}. ${t}尾：${c}次\n`;
-    });
-  } else if(engineId === "kimik3" || engineId === "zai"){
-    // Kimi/Z.ai：看头数+尾数综合
-    report += "【头数频率排行（前3）】\n";
-    sortedHead.slice(0,3).forEach(([h, c], i) => {
-      report += `${i+1}. ${h}头：${c}次\n`;
-    });
-    report += "\n【尾数频率排行（前5）】\n";
-    sortedTail.slice(0,5).forEach(([t, c], i) => {
-      report += `${i+1}. ${t}尾：${c}次\n`;
-    });
-  } else {
-    // 默认：全部综合分析
-    report += "【生肖频率排行】\n";
-    sortedZodiac.forEach(([z, c], i) => {
-      report += `${i+1}. ${z}：${c}次（${(c/draws.length*100).toFixed(1)}%）\n`;
-    });
-    report += "\n【波色分布】\n";
-    report += `红波：${waveCount.红}次（${(waveCount.红/draws.length*100).toFixed(1)}%）\n`;
-    report += `蓝波：${waveCount.蓝}次（${(waveCount.蓝/draws.length*100).toFixed(1)}%）\n`;
-    report += `绿波：${waveCount.绿}次（${(waveCount.绿/draws.length*100).toFixed(1)}%）\n\n`;
-    report += "【大小分布】\n";
-    report += `大数（≥25）：${bigCount.大}次（${(bigCount.大/draws.length*100).toFixed(1)}%）\n`;
-    report += `小数（<25）：${bigCount.小}次（${(bigCount.小/draws.length*100).toFixed(1)}%）\n\n`;
-    report += "【单双分布】\n";
-    report += `单数：${oddCount.单}次（${(oddCount.单/draws.length*100).toFixed(1)}%）\n`;
-    report += `双数：${oddCount.双}次（${(oddCount.双/draws.length*100).toFixed(1)}%）\n`;
-  }
+  // 二、号码预测
+  report += "【号码预测】\n";
+  const top24 = sortedNumber.slice(0,24).map(n=>n[0].padStart(2,'0')).join(" ");
+  const top18 = sortedNumber.slice(0,18).map(n=>n[0].padStart(2,'0')).join(" ");
+  report += `24个筛选号码：${top24}\n`;
+  report += `18个特码号码：${top18}\n\n`;
 
-  report += "\n" + "=".repeat(40) + "\n";
+  // 三、属性预测
+  report += "【属性预测】\n";
+  const top5Tail = sortedTail.slice(0,5).map(t=>t[0]+"尾").join(" ");
+  const top2Wave = Object.entries(waveCount).sort((a,b)=>b[1]-a[1]).slice(0,2).map(w=>w[0]).join(" ");
+  const top3Head = sortedHead.slice(0,3).map(h=>h[0]+"头").join(" ");
+  const mainOdd = oddCount.单 > oddCount.双 ? "单" : "双";
+  const mainBig = bigCount.大 > bigCount.小 ? "大" : "小";
+  report += `5个尾数：${top5Tail}\n`;
+  report += `2个波色：${top2Wave}\n`;
+  report += `3个头数：${top3Head}\n`;
+  report += `重点单双：${mainOdd}\n`;
+  report += `大小（大≥25，小<24）：${mainBig}\n`;
+  report += `合数单双：${mainOdd}\n\n`;
+
+  // 四、分类推荐
+  report += "【分类推荐】\n";
+  const main3 = sortedZodiac.slice(0,3).map(z=>z[0]).join(" ");
+  const anti3 = sortedZodiac.slice(3,6).map(z=>z[0]).join(" ");
+  const main12 = sortedNumber.slice(0,12).map(n=>n[0].padStart(2,'0')).join(" ");
+  const anti12 = sortedNumber.slice(12,24).map(n=>n[0].padStart(2,'0')).join(" ");
+  report += `历史记录优化 → 主3肖：${main3} / 防3肖：${anti3}\n`;
+  report += `历史记录优化 → 主12码：${main12} / 防12码：${anti12}\n`;
+  report += `智能分析 → 主3肖：${main3} / 防3肖：${anti3}\n`;
+  report += `智能分析 → 主12码：${main12} / 防12码：${anti12}\n\n`;
+
+  // 五、最终汇总
+  report += "【最终汇总】\n";
+  const top6Zodiac = sortedZodiac.slice(0,6).map(z=>z[0]).join(" ");
+  report += `最可能开的6个生肖：${top6Zodiac}\n`;
+  report += `最可能开的4个生肖：${top4}\n`;
+  report += `最可能开的24个特码号码：${top24}\n`;
+  report += `重点3个头数：${top3Head}\n`;
+  report += `5个尾数：${top5Tail}\n`;
+  report += `单双：${mainOdd}\n\n`;
+
+  report += "=".repeat(50) + "\n";
   report += "⚠️ 声明：本报告仅供历史数据研究，不构成投注建议。彩票开奖具有随机性，历史数据不能可靠提高中奖率。";
 
   out.innerHTML = "<div style='padding:12px;white-space:pre-wrap;line-height:1.8;font-size:14px;'>" + report + "</div>";
