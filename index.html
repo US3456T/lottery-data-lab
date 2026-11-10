@@ -75,7 +75,7 @@ button.primary:hover { background: var(--accent); }
 
 <main>
   <aside>
-    <div class="aside-title">AI 工具（20 个）</div>
+    <div class="aside-title">AI 工具（14 个）</div>
     <div class="engine-actions">
       <button class="mini" onclick="checkAll()">全选</button>
       <button class="mini" onclick="checkNone()">清空</button>
@@ -221,22 +221,16 @@ const ENGINES = [
   {id:"lottolabs",name:"LottoLabs",vendor:"Web",desc:"AI驱动彩票计算器",tag:"AI",url:"https://www.lottolabs.io"},
   {id:"lotterypost",name:"Lottery Post",vendor:"Web",desc:"深度历史统计分析",tag:"统计",url:"https://www.lotterypost.com/tools"},
   {id:"lotterycortex",name:"LotteryCortex",vendor:"Web",desc:"热力图+统计模型",tag:"AI",url:"https://www.lotterycortex.com"},
-  {id:"smartluck",name:"Smart Luck",vendor:"Windows",desc:"频率图表+轮盘系统",tag:"统计",url:"https://www.smartluck.com"},
-  {id:"lottopro",name:"Lotto Pro",vendor:"Windows",desc:"传统分析+过滤器",tag:"统计",url:"https://www.lottopro.com"},
-  {id:"samlotto",name:"SamLotto",vendor:"Windows",desc:"统计过滤+轮盘",tag:"统计",url:"https://www.samlotto.com"},
   {id:"beatlottery",name:"Beat Lottery",vendor:"Web",desc:"数据驱动分析",tag:"统计",url:"https://www.beatlottery.com"},
   {id:"lotonumbers",name:"LottoNumbers",vendor:"Web",desc:"纯历史频率统计",tag:"统计",url:"https://www.lotonumbers.com"},
   {id:"lottostrategies",name:"LottoStrategies",vendor:"Web",desc:"号码趋势分析",tag:"统计",url:"https://www.lottostrategies.com/lotto-analysis.html"},
   {id:"thelotterylab",name:"TheLotteryLab",vendor:"Web",desc:"开奖分析+频率图表",tag:"统计",url:"https://www.thelotterylab.com/lottery-analyzer/"},
-  {id:"lotteryusa",name:"Lottery USA",vendor:"Web/手机",desc:"统计模式+频率",tag:"统计",url:"https://www.lotteryusa.com/tools/"},
-  {id:"jackpot",name:"Jackpot.com Stats",vendor:"Web/手机",desc:"开奖统计+趋势",tag:"统计",url:"https://www.jackpot.com/lottery-statistics/"},
+  {id:"lotteryusa",name:"Lottery USA",vendor:"Web",desc:"统计模式+频率",tag:"统计",url:"https://www.lotteryusa.com/tools/"},
+  {id:"jackpot",name:"Jackpot.com Stats",vendor:"Web",desc:"开奖统计+趋势",tag:"统计",url:"https://www.jackpot.com/lottery-statistics/"},
   {id:"national-lottery",name:"UK National Lottery",vendor:"Web",desc:"英国国家彩票频率",tag:"统计",url:"https://www.national-lottery.com/statistics"},
   {id:"lotteryresults-ai",name:"LotteryResults.ai",vendor:"Web",desc:"AI分析+模式识别",tag:"AI",url:"https://www.lotteryresults.ai"},
-  {id:"lottery-toolbox",name:"Lottery Toolbox",vendor:"Android",desc:"冷热号+统计",tag:"统计",url:"https://play.google.com/store/apps/details?id=com.lottery.toolbox"},
-  {id:"lucky-numbers",name:"Lucky Numbers",vendor:"iOS",desc:"趋势+统计工具",tag:"统计",url:"https://apps.apple.com/us/app/lucky-numbers-lottery-app/id1036460354"},
   {id:"lottoanalyst",name:"Lotto Analyst",vendor:"Web",desc:"频率+趋势+均值",tag:"统计",url:"https://www.lottoanalyst.com"},
-  {id:"lotto-results-us",name:"Lotto Results US",vendor:"Android",desc:"开奖结果+历史",tag:"统计",url:"https://play.google.com/store/apps/details?id=com.sg.lotto.results"},
-  {id:"magayo",name:"Magayo Lotto",vendor:"Windows/Web",desc:"详细统计+历史分析",tag:"统计",url:"https://www.magayo.com"},
+  {id:"magayo",name:"Magayo Lotto",vendor:"Web",desc:"详细统计+历史分析",tag:"统计",url:"https://www.magayo.com"},
 ];
 let checkedEngines = new Set();
 
@@ -552,15 +546,17 @@ function askAll(){
     const card=document.createElement("div");
     card.className="chat-card";
     card.innerHTML=`<div class="engine-name">🔗 ${engine.name}（${engine.vendor}）</div>
+  // 显示选中的引擎列表（带链接，用户自己点）
+  selectedEngines.forEach((engine) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `<div class="title">${engine.name}</div>
       <div class="content">${engine.desc}</div>
-      <div class="content" style="margin-top:8px"><a href="${engine.url}" target="_blank" style="color:#2563eb;font-size:14px">👉 点击打开 ${engine.name}</a></div>`;
+      <div class="content" style="margin-top:8px">
+        <a href="${engine.url}" target="_blank" style="display:inline-block;background:#2563eb;color:#fff;padding:6px 16px;border-radius:4px;text-decoration:none;font-size:14px;margin-top:4px;">👉 点击打开 ${engine.name}</a>
+      </div>`;
     out.appendChild(card);
   });
-
-  // 自动打开第一个选中的
-  if(selectedEngines.length>0){
-    window.open(selectedEngines[0].url, "_blank");
-  }
 }
 
 function newChat(){document.getElementById("chat-out").innerHTML="";document.getElementById("question").value="";}
