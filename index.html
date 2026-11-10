@@ -65,12 +65,12 @@ button.primary:hover { background: var(--accent); }
 
 <main>
   <aside>
-    <div class="aside-title">AI 引擎（20 个）</div>
+    <div class="aside-title">AI 工具（20 个）</div>
     <div class="engine-actions">
       <button class="mini" onclick="checkAll()">全选</button>
       <button class="mini" onclick="checkNone()">清空</button>
-      <button class="mini" onclick="checkRecommend()">推荐</button>
-      <button class="mini" onclick="checkChinese()">中文</button>
+      <button class="mini" onclick="checkAI()">仅AI</button>
+      <button class="mini" onclick="checkWeb()">仅Web</button>
     </div>
     <ul class="engine-list" id="engine-list"></ul>
   </aside>
@@ -162,30 +162,30 @@ function makeZodiacMap(yz) {
 const ZOY={}; for(const z of["鼠","牛","虎","兔","龙","蛇","马","羊","猴","鸡","狗","猪"]) ZOY[z]=makeZodiacMap(z);
 const ZODIAC_INPUT={"马":[1,13,25,37,49],"蛇":[2,14,26,38],"龙":[3,15,27,39],"兔":[4,16,28,40],"虎":[5,17,29,41],"牛":[6,18,30,42],"鼠":[7,19,31,43],"猪":[8,20,32,44],"狗":[9,21,33,45],"鸡":[10,22,34,46],"猴":[11,23,35,47],"羊":[12,24,36,48]};
 
-// ===== 引擎列表（20个AI模型）=====
+// ===== 引擎列表（20个彩票分析工具）=====
 const ENGINES = [
-  {id:"gpt-nano",name:"GPT-5.4 Nano",vendor:"OpenAI",size:"-",desc:"快速高效，日常问答首选",tag:"推荐",model:"openai/gpt-5.4-nano"},
-  {id:"gpt-mini",name:"GPT-5.4 Mini",vendor:"OpenAI",size:"-",desc:"平衡速度与质量",tag:"热门",model:"openai/gpt-5.4-mini"},
-  {id:"gpt-pro",name:"GPT-5.4 Pro",vendor:"OpenAI",size:"-",desc:"最强推理，复杂分析",tag:"旗舰",model:"openai/gpt-5.4-pro"},
-  {id:"claude",name:"Claude Sonnet 5.5",vendor:"Anthropic",size:"-",desc:"长文理解强，写作优秀",tag:"写作",model:"anthropic/claude-sonnet-5-5"},
-  {id:"gemini",name:"Gemini 3.1 Pro",vendor:"Google",size:"-",desc:"逻辑推理强，数学好",tag:"推理",model:"google/gemini-3.1-pro-preview"},
-  {id:"deepseek",name:"DeepSeek R1",vendor:"深度求索",size:"-",desc:"中文推理强，数学好",tag:"中文",model:"deepseek/deepseek-r1"},
-  {id:"grok",name:"Grok 4.7",vendor:"xAI",size:"-",desc:"实时信息，幽默风格",tag:"实时",model:"x-ai/grok-4.7"},
-  {id:"llama",name:"Llama 3.3 70B",vendor:"Meta",size:"-",desc:"开源最强，英文好",tag:"开源",model:"meta/llama-3.3-70b-instruct"},
-  {id:"qwen",name:"Qwen 2.5 72B",vendor:"阿里通义",size:"-",desc:"中文理解最强",tag:"中文",model:"qwen/qwen-2.5-72b-instruct"},
-  {id:"mistral",name:"Mistral Large",vendor:"Mistral AI",size:"-",desc:"欧洲最强，多语言",tag:"多语言",model:"mistralai/mistral-large-2411"},
-  {id:"phi",name:"Phi-4",vendor:"微软",size:"-",desc:"小模型大智慧",tag:"轻量",model:"microsoft/phi-4"},
-  {id:"gemma",name:"Gemma 3 27B",vendor:"Google",size:"-",desc:"Google开源模型",tag:"开源",model:"google/gemma-3-27b-it"},
-  {id:"yi",name:"Yi 34B",vendor:"零一万物",size:"-",desc:"中文创作强",tag:"创作",model:"01-ai/yi-34b-chat"},
-  {id:"baichuan",name:"Baichuan 2",vendor:"百川智能",size:"-",desc:"中文对话优化",tag:"对话",model:"baichuan-inc/baichuan2-13b-chat"},
-  {id:"yi-light",name:"Yi 9B",vendor:"零一万物",size:"-",desc:"快速轻量",tag:"快速",model:"01-ai/yi-9b-chat"},
-  {id:"llama-8b",name:"Llama 3.1 8B",vendor:"Meta",size:"-",desc:"最小最快",tag:"极速",model:"meta/llama-3.1-8b-instruct"},
-  {id:"qwen-7b",name:"Qwen 2.5 7B",vendor:"阿里通义",size:"-",desc:"中文轻量",tag:"轻量",model:"qwen/qwen-2.5-7b-instruct"},
-  {id:"deepseek-7b",name:"DeepSeek 7B",vendor:"深度求索",size:"-",desc:"中文推理小模型",tag:"中文",model:"deepseek/deepseek-7b-chat"},
-  {id:"mixtral",name:"Mixtral 8x7B",vendor:"Mistral AI",size:"-",desc:"混合专家模型",tag:"混合",model:"mistralai/mixtral-8x7b-instruct"},
-  {id:"command",name:"Command R+",vendor:"Cohere",size:"-",desc:"企业级，长上下文",tag:"长文",model:"cohere/command-r-plus"},
+  {id:"lottable",name:"Lottable",vendor:"Web",desc:"AI辅助分析和策略",tag:"AI",url:"https://www.lottable.com"},
+  {id:"lottolabs",name:"LottoLabs",vendor:"Web",desc:"AI驱动彩票计算器",tag:"AI",url:"https://www.lottolabs.io"},
+  {id:"lotterypost",name:"Lottery Post",vendor:"Web",desc:"深度历史统计分析",tag:"统计",url:"https://www.lotterypost.com/tools"},
+  {id:"lotterycortex",name:"LotteryCortex",vendor:"Web",desc:"热力图+统计模型",tag:"AI",url:"https://www.lotterycortex.com"},
+  {id:"smartluck",name:"Smart Luck",vendor:"Windows",desc:"频率图表+轮盘系统",tag:"统计",url:"https://www.smartluck.com"},
+  {id:"lottopro",name:"Lotto Pro",vendor:"Windows",desc:"传统分析+过滤器",tag:"统计",url:"https://www.lottopro.com"},
+  {id:"samlotto",name:"SamLotto",vendor:"Windows",desc:"统计过滤+轮盘",tag:"统计",url:"https://www.samlotto.com"},
+  {id:"beatlottery",name:"Beat Lottery",vendor:"Web",desc:"数据驱动分析",tag:"统计",url:"https://www.beatlottery.com"},
+  {id:"lotonumbers",name:"LottoNumbers",vendor:"Web",desc:"纯历史频率统计",tag:"统计",url:"https://www.lotonumbers.com"},
+  {id:"lottostrategies",name:"LottoStrategies",vendor:"Web",desc:"号码趋势分析",tag:"统计",url:"https://www.lottostrategies.com/lotto-analysis.html"},
+  {id:"thelotterylab",name:"TheLotteryLab",vendor:"Web",desc:"开奖分析+频率图表",tag:"统计",url:"https://www.thelotterylab.com/lottery-analyzer/"},
+  {id:"lotteryusa",name:"Lottery USA",vendor:"Web/手机",desc:"统计模式+频率",tag:"统计",url:"https://www.lotteryusa.com/tools/"},
+  {id:"jackpot",name:"Jackpot.com Stats",vendor:"Web/手机",desc:"开奖统计+趋势",tag:"统计",url:"https://www.jackpot.com/lottery-statistics/"},
+  {id:"national-lottery",name:"UK National Lottery",vendor:"Web",desc:"英国国家彩票频率",tag:"统计",url:"https://www.national-lottery.com/statistics"},
+  {id:"lotteryresults-ai",name:"LotteryResults.ai",vendor:"Web",desc:"AI分析+模式识别",tag:"AI",url:"https://www.lotteryresults.ai"},
+  {id:"lottery-toolbox",name:"Lottery Toolbox",vendor:"Android",desc:"冷热号+统计",tag:"统计",url:"https://play.google.com/store/apps/details?id=com.lottery.toolbox"},
+  {id:"lucky-numbers",name:"Lucky Numbers",vendor:"iOS",desc:"趋势+统计工具",tag:"统计",url:"https://apps.apple.com/us/app/lucky-numbers-lottery-app/id1036460354"},
+  {id:"lottoanalyst",name:"Lotto Analyst",vendor:"Web",desc:"频率+趋势+均值",tag:"统计",url:"https://www.lottoanalyst.com"},
+  {id:"lotto-results-us",name:"Lotto Results US",vendor:"Android",desc:"开奖结果+历史",tag:"统计",url:"https://play.google.com/store/apps/details?id=com.sg.lotto.results"},
+  {id:"magayo",name:"Magayo Lotto",vendor:"Windows/Web",desc:"详细统计+历史分析",tag:"统计",url:"https://www.magayo.com"},
 ];
-let checkedEngines = new Set(["gpt-nano","deepseek","qwen"]);
+let checkedEngines = new Set(["lottable","lottolabs","lotteryresults-ai"]);
 
 // ===== 数据 =====
 let draws = [];
@@ -266,17 +266,16 @@ function renderEngines(){
   const ul=document.getElementById("engine-list"); ul.innerHTML="";
   ENGINES.forEach(e=>{
     const li=document.createElement("li");
-    if(checkedEngines.has(e.id)) li.classList.add("checked");
-    const readyTag='<span class="tag ready">在线</span>';
-    li.innerHTML=`<div class="name">${e.name} <span class="tag">${e.tag}</span></div><div class="meta">${e.vendor} · ${e.size} · ${e.desc}</div>${readyTag}`;
-    li.onclick=()=>{if(checkedEngines.has(e.id)){checkedEngines.delete(e.id);li.classList.remove("checked");}else{checkedEngines.add(e.id);li.classList.add("checked");}};
+    const readyTag='<span class="tag ready">点击打开</span>';
+    li.innerHTML=`<div class="name">${e.name} <span class="tag">${e.tag}</span></div><div class="meta">${e.vendor} · ${e.desc}</div>${readyTag}`;
+    li.onclick=()=>{window.open(e.url, "_blank");};
     ul.appendChild(li);
   });
 }
-function checkAll(){checkedEngines=new Set(ENGINES.map(e=>e.id));renderEngines();}
-function checkNone(){checkedEngines.clear();renderEngines();}
-function checkRecommend(){checkedEngines=new Set(ENGINES.filter(e=>e.tag==="推荐"||e.tag==="热门"||e.tag==="旗舰").map(e=>e.id));renderEngines();}
-function checkChinese(){checkedEngines=new Set(ENGINES.filter(e=>e.tag==="中文").map(e=>e.id));renderEngines();}
+function checkAll(){ENGINES.forEach(e=>window.open(e.url, "_blank"));}
+function checkNone(){window.close();}
+function checkAI(){ENGINES.filter(e=>e.tag==="AI").forEach(e=>window.open(e.url, "_blank"));}
+function checkWeb(){ENGINES.filter(e=>e.vendor==="Web").forEach(e=>window.open(e.url, "_blank"));}
 
 // ===== Tab切换 =====
 document.querySelectorAll(".tab").forEach(btn=>{
@@ -383,29 +382,29 @@ function genBacktest(){
 ${seq}`;
 }
 
-async function askAll(){
+function askAll(){
   const q=document.getElementById("question").value.trim();
-  if(!q){alert("请输入问题");return;}
   const out=document.getElementById("chat-out");
   out.innerHTML="";
 
   const selectedEngines = ENGINES.filter(e=>checkedEngines.has(e.id));
-  if(!selectedEngines.length){alert("请先勾选左侧至少一个AI引擎");return;}
+  if(!selectedEngines.length){alert("请先勾选左侧至少一个工具");return;}
 
-  for(const engine of selectedEngines){
+  selectedEngines.forEach((engine, i)=>{
     const card=document.createElement("div");
     card.className="chat-card";
-    card.innerHTML=`<div class="engine-name">🤖 ${engine.name}（${engine.vendor}）</div><div class="content" style="color:#666">思考中...</div>`;
+    card.innerHTML=`<div class="engine-name">🔗 ${engine.name}（${engine.vendor}）</div>
+      <div class="content">${engine.desc}</div>
+      <div class="content" style="margin-top:8px"><a href="${engine.url}" target="_blank" style="color:#2563eb;font-size:14px">👉 点击打开 ${engine.name}</a></div>`;
     out.appendChild(card);
-    const contentDiv=card.querySelector(".content");
+  });
 
-    try {
-      const response = await puter.ai.chat(q, { model: engine.model });
-      contentDiv.textContent = response.message?.content?.[0]?.text || response;
-    } catch(e) {
-      contentDiv.textContent = "出错了：" + e.message;
-      contentDiv.style.color = "#991b1b";
-    }
+  // 如果输入了问题，也显示一下
+  if(q){
+    const msgDiv=document.createElement("div");
+    msgDiv.style.cssText="padding:10px;background:#e5e7eb;border-radius:6px;margin-bottom:8px;font-size:13px;";
+    msgDiv.textContent="你问：" + q;
+    out.insertBefore(msgDiv, out.firstChild);
   }
 }
 
