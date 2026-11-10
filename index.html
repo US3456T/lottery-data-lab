@@ -75,7 +75,7 @@ button.primary:hover { background: var(--accent); }
 
 <main>
   <aside>
-    <div class="aside-title">AI 工具（14 个）</div>
+    <div class="aside-title">AI 工具（8 个）</div>
     <div class="engine-actions">
       <button class="mini" onclick="checkAll()">全选</button>
       <button class="mini" onclick="checkNone()">清空</button>
@@ -217,20 +217,14 @@ function zodiacPropsHtml(z) {
 
 // ===== 引擎列表（20个彩票分析工具）=====
 const ENGINES = [
-  {id:"lottable",name:"Lottable",vendor:"Web",desc:"AI辅助分析和策略",tag:"AI",url:"https://www.lottable.com"},
-  {id:"lottolabs",name:"LottoLabs",vendor:"Web",desc:"AI驱动彩票计算器",tag:"AI",url:"https://www.lottolabs.io"},
-  {id:"lotterypost",name:"Lottery Post",vendor:"Web",desc:"深度历史统计分析",tag:"统计",url:"https://www.lotterypost.com/tools"},
-  {id:"lotterycortex",name:"LotteryCortex",vendor:"Web",desc:"热力图+统计模型",tag:"AI",url:"https://www.lotterycortex.com"},
-  {id:"beatlottery",name:"Beat Lottery",vendor:"Web",desc:"数据驱动分析",tag:"统计",url:"https://www.beatlottery.com"},
-  {id:"lotonumbers",name:"LottoNumbers",vendor:"Web",desc:"纯历史频率统计",tag:"统计",url:"https://www.lotonumbers.com"},
-  {id:"lottostrategies",name:"LottoStrategies",vendor:"Web",desc:"号码趋势分析",tag:"统计",url:"https://www.lottostrategies.com/lotto-analysis.html"},
-  {id:"thelotterylab",name:"TheLotteryLab",vendor:"Web",desc:"开奖分析+频率图表",tag:"统计",url:"https://www.thelotterylab.com/lottery-analyzer/"},
-  {id:"lotteryusa",name:"Lottery USA",vendor:"Web",desc:"统计模式+频率",tag:"统计",url:"https://www.lotteryusa.com/tools/"},
-  {id:"jackpot",name:"Jackpot.com Stats",vendor:"Web",desc:"开奖统计+趋势",tag:"统计",url:"https://www.jackpot.com/lottery-statistics/"},
-  {id:"national-lottery",name:"UK National Lottery",vendor:"Web",desc:"英国国家彩票频率",tag:"统计",url:"https://www.national-lottery.com/statistics"},
-  {id:"lotteryresults-ai",name:"LotteryResults.ai",vendor:"Web",desc:"AI分析+模式识别",tag:"AI",url:"https://www.lotteryresults.ai"},
-  {id:"lottoanalyst",name:"Lotto Analyst",vendor:"Web",desc:"频率+趋势+均值",tag:"统计",url:"https://www.lottoanalyst.com"},
-  {id:"magayo",name:"Magayo Lotto",vendor:"Web",desc:"详细统计+历史分析",tag:"统计",url:"https://www.magayo.com"},
+  {id:"500",name:"500彩票网",vendor:"Web",desc:"彩票数据+走势分析",tag:"统计",url:"https://www.500.com"},
+  {id:"ticai",name:"中国体彩网",vendor:"Web",desc:"官方体彩数据+分析",tag:"统计",url:"https://www.lottery.gov.cn"},
+  {id:"fucai",name:"中国福彩网",vendor:"Web",desc:"官方福彩数据+分析",tag:"统计",url:"https://www.cwl.gov.cn"},
+  {id:"sina",name:"新浪彩票",vendor:"Web",desc:"彩票资讯+走势分析",tag:"统计",url:"https://lottery.sina.com.cn"},
+  {id:"tencent",name:"腾讯彩票",vendor:"Web",desc:"彩票数据+专家预测",tag:"统计",url:"https://lottery.qq.com"},
+  {id:"zhongcai",name:"中彩网",vendor:"Web",desc:"彩票数据+专家分析",tag:"统计",url:"https://www.zhcw.com"},
+  {id:"zst",name:"走势图",vendor:"Web",desc:"彩票走势图+遗漏分析",tag:"统计",url:"https://www.zhcw.com/kjxx/"},
+  {id:"kaijiang",name:"开奖查询",vendor:"Web",desc:"历史开奖结果查询",tag:"统计",url:"https://www.500.com/history/"},
 ];
 let checkedEngines = new Set();
 
