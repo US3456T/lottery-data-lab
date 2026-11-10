@@ -542,16 +542,15 @@ function askAll(){
   const selectedEngines = ENGINES.filter(e=>checkedEngines.has(e.id));
   if(!selectedEngines.length){alert("请先勾选左侧至少一个工具");return;}
 
-  // 显示选中的引擎列表（带链接，用户自己点）
-  selectedEngines.forEach((engine) => {
+  // 直接打开选中的网站
+  selectedEngines.forEach((engine, i) => {
     const card = document.createElement("div");
     card.className = "card";
-    card.innerHTML = `<div class="title">${engine.name}</div>
-      <div class="content">${engine.desc}</div>
-      <div class="content" style="margin-top:8px">
-        <a href="${engine.url}" target="_blank" style="display:inline-block;background:#2563eb;color:#fff;padding:6px 16px;border-radius:4px;text-decoration:none;font-size:14px;margin-top:4px;">👉 点击打开 ${engine.name}</a>
-      </div>`;
+    card.innerHTML = `<div class="title">✅ ${engine.name}（已打开）</div>
+      <div class="content">${engine.desc}</div>`;
     out.appendChild(card);
+    // 打开网站
+    window.open(engine.url, "_blank");
   });
 }
 
