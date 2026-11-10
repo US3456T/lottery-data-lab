@@ -530,21 +530,30 @@ ${seq}`;
 }
 
 function askAll(){
-  const out=document.getElementById("chat-out");
-  out.innerHTML="";
+  const question = document.getElementById("question").value.trim();
+  if(!question){alert("请先输入你的问题");return;}
+  const out = document.getElementById("chat-out");
+  out.innerHTML = "<div style='padding:12px;color:#666;'>🤖 AI正在分析你的历史数据，请稍等...</div>";
 
-  const selectedEngines = ENGINES.filter(e=>checkedEngines.has(e.id));
-  if(!selectedEngines.length){alert("请先勾选左侧至少一个工具");return;}
+  // 准备历史数据上下文
+  let dataContext = "";
+  if(draws.length > 0){
+    const recent = draws.slice(-50); // 取最近50期作为上下文
+    dataContext = "历史开奖数据（最近50期）：\n";
+    recent.forEach(d => {
+      const z = zodiacOf(d.special, draws.indexOf(d));
+      dataContext += `第${d.issue}期：平码 ${d.normals.join(" ")}，特码 ${d.special}（${z}）\n`;
+    });
+    dataContext += `共 ${draws.length} 期历史数据。\n\n`;
+  }
 
-  // 直接打开选中的网站
-  selectedEngines.forEach((engine, i) => {
-    const card = document.createElement("div");
-    card.className = "card";
-    card.innerHTML = `<div class="title">✅ ${engine.name}（已打开）</div>
-      <div class="content">${engine.desc}</div>`;
-    out.appendChild(card);
-    // 打开网站
-    window.open(engine.url, "_blank");
+  // 用 Puter.js 调用大模型
+  puter.ai.chat(dataContext + "用户问题：" + question, {
+    model: "gpt-4o-mini"
+  }).then(response => {
+    out.innerHTML = "<div style='padding:12px;white-space:pre-wrap;line-height:1.6;'>" + response.message.content + "</div>";
+  }).catch(err => {
+    out.innerHTML = "<div style='padding:12px;color:#d32f2f;'>AI调用失败：" + err.message + "<br><br>请确认你已登录 Puter.js（点击页面右上角登录）。</div>";
   });
 }
 
