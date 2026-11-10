@@ -67,9 +67,9 @@ button.primary:hover { background: var(--accent); }
 <body>
 
 <header>
-  <div class="logo">🎯 AI 工作室 <span class="badge ok" id="status-bar">在线 · 加载中</span></div>
+  <div class="logo">🎯 AI 工作室 <span class="badge ok" id="status-bar">在线 · 0期</span></div>
   <div>
-    <span class="badge" id="dataset-badge">AI历史记录.txt（3679期）</span>
+    <span class="badge" id="dataset-badge">未加载数据</span>
   </div>
 </header>
 
@@ -581,7 +581,7 @@ dropZone.ondrop = (e) => {
   if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
 };
 
-const d = parseCSV(DEFAULT_CSV);
+const d = [];
 setData(d);
 </script>
 </body>
