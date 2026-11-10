@@ -368,6 +368,8 @@ document.querySelectorAll(".tab").forEach(btn=>{
 // ===== 页面操作 =====
 function setData(d){
   draws=d;
+  // 保存到浏览器，刷新后不会清空
+  try { localStorage.setItem("lottery_data", JSON.stringify(draws)); } catch(e) {}
   detectYearBoundaries();
   const info = document.getElementById("data-info");
   if(info) info.textContent=`共 ${draws.length} 期：${draws[0]?.issue} → ${draws[draws.length-1]?.issue}`;
@@ -545,28 +547,81 @@ function askAll(){
   const question = document.getElementById("question").value.trim();
   if(!question){alert("请先输入你的问题");return;}
   const out = document.getElementById("chat-out");
-  out.innerHTML = "<div style='padding:12px;color:#666;'>🤖 AI正在分析你的历史数据，请稍等...</div>";
 
-  // 准备历史数据上下文
-  let dataContext = "";
-  if(draws.length > 0){
-    const recent = draws.slice(-50); // 取最近50期作为上下文
-    dataContext = "历史开奖数据（最近50期）：\n";
-    recent.forEach(d => {
-      const z = zodiacOf(d.special, draws.indexOf(d));
-      dataContext += `第${d.issue}期：平码 ${d.normals.join(" ")}，特码 ${d.special}（${z}）\n`;
-    });
-    dataContext += `共 ${draws.length} 期历史数据。\n\n`;
+  if(draws.length === 0){
+    out.innerHTML = "<div style='padding:12px;color:#d32f2f;'>请先上传历史数据！点【历史数据】tab，把你的 .txt 文件拖进去。</div>";
+    return;
   }
 
-  // 用 Puter.js 调用大模型
-  puter.ai.chat(dataContext + "用户问题：" + question, {
-    model: "gpt-4o-mini"
-  }).then(response => {
-    out.innerHTML = "<div style='padding:12px;white-space:pre-wrap;line-height:1.6;'>" + response.message.content + "</div>";
-  }).catch(err => {
-    out.innerHTML = "<div style='padding:12px;color:#d32f2f;'>AI调用失败：" + err.message + "<br><br>请确认你已登录 Puter.js（点击页面右上角登录）。</div>";
+  out.innerHTML = "<div style='padding:12px;color:#666;'>🤖 正在分析你的历史数据，请稍等...</div>";
+
+  // 内置统计分析
+  const specialNumbers = draws.map(d => d.special);
+  const zodiacCount = {};
+  const waveCount = {红:0, 蓝:0, 绿:0};
+  const tailCount = {};
+  const headCount = {};
+  const bigCount = {大:0, 小:0};
+  const oddCount = {单:0, 双:0};
+
+  draws.forEach((d, i) => {
+    const z = zodiacOf(d.special, i);
+    zodiacCount[z] = (zodiacCount[z] || 0) + 1;
+    const w = ballColor(d.special);
+    waveCount[w]++;
+    const tail = d.special % 10;
+    tailCount[tail] = (tailCount[tail] || 0) + 1;
+    const head = Math.floor(d.special / 10);
+    headCount[head] = (headCount[head] || 0) + 1;
+    if(d.special >= 25) bigCount.大++; else bigCount.小++;
+    if(d.special % 2 === 1) oddCount.单++; else oddCount.双++;
   });
+
+  // 排序生肖
+  const sortedZodiac = Object.entries(zodiacCount).sort((a,b) => b[1]-a[1]);
+  const sortedTail = Object.entries(tailCount).sort((a,b) => b[1]-a[1]);
+  const sortedHead = Object.entries(headCount).sort((a,b) => b[1]-a[1]);
+
+  // 生成报告
+  let report = "📊 历史数据分析报告\n";
+  report += "=".repeat(40) + "\n\n";
+  report += "📈 统计周期：共 " + draws.length + " 期\n\n";
+
+  report += "【生肖频率排行】\n";
+  sortedZodiac.forEach(([z, c], i) => {
+    report += `${i+1}. ${z}：${c}次（${(c/draws.length*100).toFixed(1)}%）\n`;
+  });
+  report += "\n";
+
+  report += "【波色分布】\n";
+  report += `红波：${waveCount.红}次（${(waveCount.红/draws.length*100).toFixed(1)}%）\n`;
+  report += `蓝波：${waveCount.蓝}次（${(waveCount.蓝/draws.length*100).toFixed(1)}%）\n`;
+  report += `绿波：${waveCount.绿}次（${(waveCount.绿/draws.length*100).toFixed(1)}%）\n\n`;
+
+  report += "【尾数频率排行（前5）】\n";
+  sortedTail.slice(0,5).forEach(([t, c], i) => {
+    report += `${i+1}. ${t}尾：${c}次\n`;
+  });
+  report += "\n";
+
+  report += "【头数频率排行（前3）】\n";
+  sortedHead.slice(0,3).forEach(([h, c], i) => {
+    report += `${i+1}. ${h}头：${c}次\n`;
+  });
+  report += "\n";
+
+  report += "【大小分布】\n";
+  report += `大数（≥25）：${bigCount.大}次（${(bigCount.大/draws.length*100).toFixed(1)}%）\n`;
+  report += `小数（<25）：${bigCount.小}次（${(bigCount.小/draws.length*100).toFixed(1)}%）\n\n`;
+
+  report += "【单双分布】\n";
+  report += `单数：${oddCount.单}次（${(oddCount.单/draws.length*100).toFixed(1)}%）\n`;
+  report += `双数：${oddCount.双}次（${(oddCount.双/draws.length*100).toFixed(1)}%）\n\n`;
+
+  report += "=".repeat(40) + "\n";
+  report += "⚠️ 声明：本报告仅供历史数据研究，不构成投注建议。彩票开奖具有随机性，历史数据不能可靠提高中奖率。";
+
+  out.innerHTML = "<div style='padding:12px;white-space:pre-wrap;line-height:1.8;font-size:14px;'>" + report + "</div>";
 }
 
 function newChat(){document.getElementById("chat-out").innerHTML="";document.getElementById("question").value="";}
@@ -586,8 +641,17 @@ document.addEventListener("drop", (e) => {
   if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
 });
 
-const d = [];
-setData(d);
+// 从浏览器读取历史数据，刷新后不会清空
+try {
+  const saved = localStorage.getItem("lottery_data");
+  if(saved) {
+    const d = JSON.parse(saved);
+    if(Array.isArray(d) && d.length > 0) {
+      setData(d);
+      alert(`已恢复上次数据：共 ${d.length} 期`);
+    }
+  }
+} catch(e) {}
 </script>
 </body>
 </html>
