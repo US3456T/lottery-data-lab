@@ -52,6 +52,16 @@ button.primary:hover { background: var(--accent); }
 .chat-layout { display: flex; gap: 12px; height: calc(100vh - 180px); }
 .chat-history-panel { width: 200px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; }
 .chat-main { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.draw-row { display: flex; align-items: center; gap: 5px; padding: 5px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.draw-issue { width: 60px; font-size: 13px; font-weight: 600; color: var(--text); flex-shrink: 0; }
+.ball { width: 52px; text-align: center; flex-shrink: 0; border-radius: 4px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+.ball .num { font-size: 19px; font-weight: 700; color: #fff; padding: 5px 0; line-height: 1.1; }
+.ball .zodiac { font-size: 12px; color: #333; background: #fff; padding: 2px 0; }
+.ball.red .num { background: #d32f2f; }
+.ball.blue .num { background: #1565c0; }
+.ball.green .num { background: #2e7d32; }
+.ball.special { border: 2px solid #f9a825; margin-left: 14px; }
+.draw-tail { font-size: 11px; color: var(--text-dim); margin-left: 6px; line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -87,14 +97,16 @@ button.primary:hover { background: var(--accent); }
 
     <div class="tab-pane" id="pane-data">
       <div class="row"><span class="hint">数据已内置，共 3679 期（2000龙年~2026马年）。也可以上传你的 .txt 文件。</span></div>
-      <div id="drop-zone" style="border:2px dashed var(--border);border-radius:8px;padding:30px;text-align:center;background:var(--card);margin-bottom:12px;cursor:pointer;">
-        <div style="font-size:16px;margin-bottom:8px;">📁 把你的 .txt 历史记录文件拖到这里</div>
-        <button class="primary" style="margin-top:10px;" onclick="document.getElementById('file-input').click()">📂 点这里选择文件上传</button>
+      <div id="drop-zone" style="border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;background:var(--card);margin-bottom:12px;cursor:pointer;">
+        <div style="font-size:14px;margin-bottom:8px;">📁 把你的 .txt 历史记录文件拖到这里</div>
+        <button class="primary" onclick="document.getElementById('file-input').click()">📂 点这里选择文件上传</button>
         <input type="file" id="file-input" accept=".txt,.csv" style="display:none;">
       </div>
-      <textarea id="data-input" rows="4" style="width:100%;background:var(--card);border:1px dashed var(--border);padding:8px;border-radius:4px;font-size:12px" placeholder="也可以直接粘贴数据..."></textarea>
+      <textarea id="data-input" rows="3" style="width:100%;background:var(--card);border:1px dashed var(--border);padding:8px;border-radius:4px;font-size:12px" placeholder="也可以直接粘贴数据..."></textarea>
       <div class="row"><button class="primary" onclick="importData()">导入粘贴的数据</button></div>
       <div id="data-info" class="hint"></div>
+      <h3 style="margin:16px 0 8px;">全部历史记录</h3>
+      <div id="draw-list" style="max-height:600px;overflow-y:auto;"></div>
     </div>
 
     <div class="tab-pane" id="pane-report">
@@ -166,6 +178,44 @@ function makeZodiacMap(yz) {
 }
 const ZOY={}; for(const z of["鼠","牛","虎","兔","龙","蛇","马","羊","猴","鸡","狗","猪"]) ZOY[z]=makeZodiacMap(z);
 const ZODIAC_INPUT={"马":[1,13,25,37,49],"蛇":[2,14,26,38],"龙":[3,15,27,39],"兔":[4,16,28,40],"虎":[5,17,29,41],"牛":[6,18,30,42],"鼠":[7,19,31,43],"猪":[8,20,32,44],"狗":[9,21,33,45],"鸡":[10,22,34,46],"猴":[11,23,35,47],"羊":[12,24,36,48]};
+
+// 生肖属性
+const ZODIAC_PROPS = {
+  "鼠": { type:"野兽", lucky:"凶丑肖", yin:"阴肖", stroke:"单笔肖", gender:"男", heaven:"地" },
+  "牛": { type:"家禽", lucky:"凶丑肖", yin:"阳肖", stroke:"双笔肖", gender:"男", heaven:"天" },
+  "虎": { type:"野兽", lucky:"凶丑肖", yin:"阳肖", stroke:"双笔肖", gender:"男", heaven:"地" },
+  "兔": { type:"野兽", lucky:"吉美肖", yin:"阳肖", stroke:"双笔肖", gender:"女", heaven:"天" },
+  "龙": { type:"野兽", lucky:"吉美肖", yin:"阴肖", stroke:"单笔肖", gender:"男", heaven:"天" },
+  "蛇": { type:"野兽", lucky:"吉美肖", yin:"阴肖", stroke:"单笔肖", gender:"女", heaven:"地" },
+  "马": { type:"家禽", lucky:"吉美肖", yin:"阴肖", stroke:"单笔肖", gender:"男", heaven:"天" },
+  "羊": { type:"家禽", lucky:"吉美肖", yin:"阳肖", stroke:"双笔肖", gender:"女", heaven:"地" },
+  "猴": { type:"野兽", lucky:"凶丑肖", yin:"阳肖", stroke:"双笔肖", gender:"男", heaven:"天" },
+  "鸡": { type:"家禽", lucky:"吉美肖", yin:"阳肖", stroke:"单笔肖", gender:"女", heaven:"地" },
+  "狗": { type:"家禽", lucky:"凶丑肖", yin:"阴肖", stroke:"双笔肖", gender:"男", heaven:"地" },
+  "猪": { type:"家禽", lucky:"凶丑肖", yin:"阴肖", stroke:"单笔肖", gender:"女", heaven:"天" },
+};
+
+function colorOf(n) {
+  if(RED.has(n)) return "red";
+  if(BLUE.has(n)) return "blue";
+  return "green";
+}
+
+function ball(n, zodiac, isSpecial) {
+  const c = colorOf(n);
+  const sp = isSpecial ? " special" : "";
+  return '<div class="ball ' + c + sp + '">' +
+    '<div class="num">' + pad2(n) + "</div>" +
+    '<div class="zodiac">' + (zodiac || "") + "</div>" +
+    "</div>";
+}
+
+function zodiacPropsHtml(z) {
+  const p = ZODIAC_PROPS[z];
+  if (!p) return "";
+  const tags = [p.type, p.lucky, p.yin, p.stroke, p.gender+"肖", p.heaven+"肖"];
+  return tags.map(t => '<span style="display:inline-block;background:#e0e0e0;color:#333;border-radius:3px;padding:1px 5px;margin:0 2px;font-size:10px;">'+t+'</span>').join("");
+}
 
 // ===== 引擎列表（20个彩票分析工具）=====
 const ENGINES = [
@@ -318,7 +368,58 @@ document.querySelectorAll(".tab").forEach(btn=>{
 });
 
 // ===== 页面操作 =====
-function setData(d){draws=d;detectYearBoundaries();document.getElementById("data-info").textContent=`共 ${draws.length} 期：${draws[0]?.issue} → ${draws[draws.length-1]?.issue}`;document.getElementById("status-bar").textContent=`在线 · ${draws.length}期`;}
+function setData(d){
+  draws=d;
+  detectYearBoundaries();
+  document.getElementById("data-info").textContent=`共 ${draws.length} 期：${draws[0]?.issue} → ${draws[draws.length-1]?.issue}`;
+  document.getElementById("status-bar").textContent=`在线 · ${draws.length}期`;
+  renderDrawList();
+}
+
+function renderDrawList() {
+  const list = document.getElementById("draw-list");
+  if(!list) return;
+  list.innerHTML = "";
+  let lastYearZodiac = "";
+  let yearBoundaryCount = 0;
+  const YEAR_LIST = ["2000年","2001年","2002年","2003年","2004年","2005年","2006年","2007年","2008年","2009年",
+    "2010年","2011年","2012年","2013年","2014年","2015年","2016年","2017年","2018年","2019年",
+    "2020年","2021年","2022年","2023年","2024年","2025年","2026年"];
+
+  draws.forEach((d, idx) => {
+    // 检测年份生肖变化
+    let yz = "马";
+    for(const b of yearBoundaries){ if(idx>=b.startIdx) yz=b.zodiac; }
+    if (yz !== lastYearZodiac) {
+      const sep = document.createElement("div");
+      sep.style.cssText = "text-align:center;font-weight:700;color:#666;background:#e0e0e0;padding:6px;margin:8px 0;border-radius:4px;font-size:14px;letter-spacing:2px;";
+      const yearLabel = YEAR_LIST[yearBoundaryCount] || (2000+yearBoundaryCount)+"年";
+      sep.textContent = yearLabel + "农历" + yz + "年（" + yz + "的号码是：01 13 25 37 49）";
+      list.appendChild(sep);
+      lastYearZodiac = yz;
+      yearBoundaryCount++;
+    }
+
+    const row = document.createElement("div");
+    row.className = "draw-row";
+    let html = '<div class="draw-issue">' + d.issue + "期</div>";
+    d.normals.forEach((n, i) => {
+      const z = zodiacOf(n, idx);
+      html += ball(n, z, false);
+    });
+    html += '<div style="display:flex;align-items:center;font-size:19px;font-weight:700;color:#f9a825;margin:0 6px;white-space:nowrap;">= 特码T码 =</div>';
+    const sz = zodiacOf(d.special, idx);
+    html += ball(d.special, sz, true);
+    html += '<div style="display:flex;align-items:center;margin-left:6px;white-space:nowrap;font-size:11px;gap:3px;">' + zodiacPropsHtml(sz) + '</div>';
+    const size = d.special >= 25 ? "大" : "小";
+    const parity = d.special % 2 === 1 ? "单" : "双";
+    const seg = Math.floor(d.special/10) + "段";
+    const he = (Math.floor(d.special/10) + d.special%10) + "合";
+    html += '<div class="draw-tail">' + size + " " + parity + "肖 " + seg + " " + he + "</div>";
+    row.innerHTML = html;
+    list.appendChild(row);
+  });
+}
 
 function importData(){
   const text=document.getElementById("data-input").value; if(!text.trim()){alert("请先粘贴数据");return;}
