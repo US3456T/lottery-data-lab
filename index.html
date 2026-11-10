@@ -86,10 +86,10 @@ button.primary:hover { background: var(--accent); }
     </nav>
 
     <div class="tab-pane" id="pane-data">
-      <div class="row"><span class="hint">数据已内置，共 3679 期（2000龙年~2026马年）。也可以拖入你的 .txt 文件直接加载。</span></div>
+      <div class="row"><span class="hint">数据已内置，共 3679 期（2000龙年~2026马年）。也可以上传你的 .txt 文件。</span></div>
       <div id="drop-zone" style="border:2px dashed var(--border);border-radius:8px;padding:30px;text-align:center;background:var(--card);margin-bottom:12px;cursor:pointer;">
         <div style="font-size:16px;margin-bottom:8px;">📁 把你的 .txt 历史记录文件拖到这里</div>
-        <div style="font-size:12px;color:#999;">或者点击这里选择文件</div>
+        <button class="primary" style="margin-top:10px;" onclick="document.getElementById('file-input').click()">📂 点这里选择文件上传</button>
         <input type="file" id="file-input" accept=".txt,.csv" style="display:none;">
       </div>
       <textarea id="data-input" rows="4" style="width:100%;background:var(--card);border:1px dashed var(--border);padding:8px;border-radius:4px;font-size:12px" placeholder="也可以直接粘贴数据..."></textarea>
