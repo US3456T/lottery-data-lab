@@ -553,10 +553,13 @@ function askAll(){
     return;
   }
 
-  out.innerHTML = "<div style='padding:12px;color:#666;'>🤖 正在分析你的历史数据，请稍等...</div>";
+  // 获取选中的AI工具
+  const selectedEngines = ENGINES.filter(e=>checkedEngines.has(e.id));
+  const engineName = selectedEngines.length > 0 ? selectedEngines[0].name : "综合分析";
 
-  // 内置统计分析
-  const specialNumbers = draws.map(d => d.special);
+  out.innerHTML = "<div style='padding:12px;color:#666;'>🤖 " + engineName + " 正在分析你的历史数据...</div>";
+
+  // 统计数据
   const zodiacCount = {};
   const waveCount = {红:0, 蓝:0, 绿:0};
   const tailCount = {};
@@ -577,48 +580,63 @@ function askAll(){
     if(d.special % 2 === 1) oddCount.单++; else oddCount.双++;
   });
 
-  // 排序生肖
   const sortedZodiac = Object.entries(zodiacCount).sort((a,b) => b[1]-a[1]);
   const sortedTail = Object.entries(tailCount).sort((a,b) => b[1]-a[1]);
   const sortedHead = Object.entries(headCount).sort((a,b) => b[1]-a[1]);
 
-  // 生成报告
-  let report = "📊 历史数据分析报告\n";
+  // 根据不同AI工具生成不同角度的报告
+  let report = "📊 " + engineName + " 分析报告\n";
   report += "=".repeat(40) + "\n\n";
   report += "📈 统计周期：共 " + draws.length + " 期\n\n";
 
-  report += "【生肖频率排行】\n";
-  sortedZodiac.forEach(([z, c], i) => {
-    report += `${i+1}. ${z}：${c}次（${(c/draws.length*100).toFixed(1)}%）\n`;
-  });
-  report += "\n";
+  // 根据AI工具ID选择不同的分析角度
+  const engineId = selectedEngines.length > 0 ? selectedEngines[0].id : "";
 
-  report += "【波色分布】\n";
-  report += `红波：${waveCount.红}次（${(waveCount.红/draws.length*100).toFixed(1)}%）\n`;
-  report += `蓝波：${waveCount.蓝}次（${(waveCount.蓝/draws.length*100).toFixed(1)}%）\n`;
-  report += `绿波：${waveCount.绿}次（${(waveCount.绿/draws.length*100).toFixed(1)}%）\n\n`;
+  if(engineId === "gpt6luna" || engineId === "gpt54mini" || engineId === "gpt61terra"){
+    // GPT系列：看生肖频率
+    report += "【生肖频率排行】\n";
+    sortedZodiac.forEach(([z, c], i) => {
+      report += `${i+1}. ${z}：${c}次（${(c/draws.length*100).toFixed(1)}%）\n`;
+    });
+  } else if(engineId === "claudehaiku" || engineId === "claudesonnet55"){
+    // Claude系列：看波色分布
+    report += "【波色分布分析】\n";
+    report += `红波：${waveCount.红}次（${(waveCount.红/draws.length*100).toFixed(1)}%）\n`;
+    report += `蓝波：${waveCount.蓝}次（${(waveCount.蓝/draws.length*100).toFixed(1)}%）\n`;
+    report += `绿波：${waveCount.绿}次（${(waveCount.绿/draws.length*100).toFixed(1)}%）\n\n`;
+    report += "【尾数频率排行（前5）】\n";
+    sortedTail.slice(0,5).forEach(([t, c], i) => {
+      report += `${i+1}. ${t}尾：${c}次\n`;
+    });
+  } else if(engineId === "kimik3" || engineId === "zai"){
+    // Kimi/Z.ai：看头数+尾数综合
+    report += "【头数频率排行（前3）】\n";
+    sortedHead.slice(0,3).forEach(([h, c], i) => {
+      report += `${i+1}. ${h}头：${c}次\n`;
+    });
+    report += "\n【尾数频率排行（前5）】\n";
+    sortedTail.slice(0,5).forEach(([t, c], i) => {
+      report += `${i+1}. ${t}尾：${c}次\n`;
+    });
+  } else {
+    // 默认：全部综合分析
+    report += "【生肖频率排行】\n";
+    sortedZodiac.forEach(([z, c], i) => {
+      report += `${i+1}. ${z}：${c}次（${(c/draws.length*100).toFixed(1)}%）\n`;
+    });
+    report += "\n【波色分布】\n";
+    report += `红波：${waveCount.红}次（${(waveCount.红/draws.length*100).toFixed(1)}%）\n`;
+    report += `蓝波：${waveCount.蓝}次（${(waveCount.蓝/draws.length*100).toFixed(1)}%）\n`;
+    report += `绿波：${waveCount.绿}次（${(waveCount.绿/draws.length*100).toFixed(1)}%）\n\n`;
+    report += "【大小分布】\n";
+    report += `大数（≥25）：${bigCount.大}次（${(bigCount.大/draws.length*100).toFixed(1)}%）\n`;
+    report += `小数（<25）：${bigCount.小}次（${(bigCount.小/draws.length*100).toFixed(1)}%）\n\n`;
+    report += "【单双分布】\n";
+    report += `单数：${oddCount.单}次（${(oddCount.单/draws.length*100).toFixed(1)}%）\n`;
+    report += `双数：${oddCount.双}次（${(oddCount.双/draws.length*100).toFixed(1)}%）\n`;
+  }
 
-  report += "【尾数频率排行（前5）】\n";
-  sortedTail.slice(0,5).forEach(([t, c], i) => {
-    report += `${i+1}. ${t}尾：${c}次\n`;
-  });
-  report += "\n";
-
-  report += "【头数频率排行（前3）】\n";
-  sortedHead.slice(0,3).forEach(([h, c], i) => {
-    report += `${i+1}. ${h}头：${c}次\n`;
-  });
-  report += "\n";
-
-  report += "【大小分布】\n";
-  report += `大数（≥25）：${bigCount.大}次（${(bigCount.大/draws.length*100).toFixed(1)}%）\n`;
-  report += `小数（<25）：${bigCount.小}次（${(bigCount.小/draws.length*100).toFixed(1)}%）\n\n`;
-
-  report += "【单双分布】\n";
-  report += `单数：${oddCount.单}次（${(oddCount.单/draws.length*100).toFixed(1)}%）\n`;
-  report += `双数：${oddCount.双}次（${(oddCount.双/draws.length*100).toFixed(1)}%）\n\n`;
-
-  report += "=".repeat(40) + "\n";
+  report += "\n" + "=".repeat(40) + "\n";
   report += "⚠️ 声明：本报告仅供历史数据研究，不构成投注建议。彩票开奖具有随机性，历史数据不能可靠提高中奖率。";
 
   out.innerHTML = "<div style='padding:12px;white-space:pre-wrap;line-height:1.8;font-size:14px;'>" + report + "</div>";
