@@ -102,6 +102,19 @@ button.primary:hover { background: var(--accent); }
         <button class="danger" onclick="clearData()" style="background:#d32f2f;color:#fff;">清空</button>
         <input type="file" id="file-input" accept=".txt,.csv" style="display:none;">
       </div>
+      <!-- 最新一期（记忆） -->
+      <div id="latest-card" style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px;">
+        <div style="font-weight:600;font-size:13px;margin-bottom:8px;">🏆 最新一期（自动记住）</div>
+        <div id="latest-body" style="font-size:12px;color:var(--text-dim);">还没有数据，上传或输入一次之后会自动记住，下次打开不用重新输入。</div>
+      </div>
+
+      <!-- 新增一期 -->
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;">
+        <input id="new-draw" placeholder="输入新一期，例：314期 24 39 21 27 35 06 T 44"
+               style="flex:1;min-width:240px;padding:8px;border:1px solid var(--border);border-radius:4px;font-size:13px;background:var(--card);">
+        <button class="primary" onclick="addOneDraw()">保存这一期</button>
+      </div>
+
       <textarea id="data-input" rows="5" style="width:100%;background:var(--card);border:1px dashed var(--border);padding:12px;border-radius:4px;font-size:13px;margin-bottom:16px;" placeholder="在这里粘贴你的历史记录，或直接把 TXT 文件拖进来..."></textarea>
       <h3>全部历史记录</h3>
       <div id="draw-list" style="max-height:none;overflow-y:visible;"></div>
@@ -151,6 +164,7 @@ button.primary:hover { background: var(--accent); }
           <div style="padding:8px;border-top:1px solid var(--border);"><button class="primary" style="width:100%" onclick="newChat()">+ 新对话</button></div>
         </div>
         <div class="chat-main">
+          <div id="latest-body2" style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:12px;color:var(--text-dim);">还没有数据，去【历史数据】上传或输入最新一期。</div>
           <div class="row"><textarea id="question" rows="3" style="flex:1" placeholder="输入你的问题..."></textarea></div>
           <div class="row"><button class="primary" onclick="askAll()">开始</button><span class="hint">跑所有勾选的引擎（前面打勾的）</span></div>
           <div id="chat-out" class="chat-out" style="flex:1;overflow-y:auto;"></div>
@@ -375,6 +389,62 @@ function setData(d){
   if(info) info.textContent=`共 ${draws.length} 期：${draws[0]?.issue} → ${draws[draws.length-1]?.issue}`;
   document.getElementById("status-bar").textContent=`在线 · ${draws.length}期`;
   renderDrawList();
+  renderLatest();
+}
+
+// 显示最新一期：号码球 + 生肖 + 属性标签
+function renderLatest(){
+  const bodies = [document.getElementById("latest-body"), document.getElementById("latest-body2")].filter(Boolean);
+  if(!bodies.length) return;
+  if(!draws.length){
+    const empty = "还没有数据，上传或输入一次之后会自动记住，下次打开不用重新输入。";
+    bodies.forEach(b => { b.innerHTML = empty; });
+    return;
+  }
+  const lastIdx = draws.length - 1;
+  const d = draws[lastIdx];
+  const z = zodiacOf(d.special, lastIdx);
+  const tail = d.special % 10;
+  const head = Math.floor(d.special / 10);
+  let html = "";
+  html += "<div style='margin-bottom:8px;'><span class='badge ok' style='font-size:12px;'>第 " + d.issue + " 期</span>";
+  html += " <span style='color:var(--text-dim);'>特码 生肖：<b style='font-size:15px;color:#ef4444;'>" + z + "</b></span></div>";
+  html += "<div style='display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;'>";
+  d.normals.forEach(n => { html += ball(n, zodiacOf(n, lastIdx), false); });
+  html += ball(d.special, z, true);
+  html += "</div>";
+  html += "<div style='font-size:12px;color:var(--text);'>特码 " + pad2(d.special) + "（" + z + "） ｜ " + ballColor(d.special) + "波 ｜ " + head + "头" + tail + "尾 ｜ " + (d.special>=25?"大":"小") + " ｜ " + (d.special%2===1?"单":"双") + "</div>";
+  bodies.forEach(b => { b.innerHTML = html; });
+}
+
+// 新增一期，直接追加并记住
+function addOneDraw(){
+  const box = document.getElementById("new-draw");
+  const text = (box.value || "").trim();
+  if(!text){ alert("请先输入一期内容，例如：314期 24 39 21 27 35 06 T 44"); return; }
+
+  let parsed = parseTxt(text);
+  if(!parsed.length){
+    // 也支持只输入 期号 + 7个号码
+    const nums = text.replace(/[^\d\s]/g, " ").trim().split(/\s+/).map(Number).filter(n => n>=1 && n<=49);
+    if(nums.length >= 7){
+      parsed = [{ issue: String(nums[0]).padStart(3,"0"), date:"", normals: nums.slice(1,7), special: nums[7] !== undefined ? nums[7] : nums[6] }];
+    }
+  }
+  if(!parsed.length){
+    alert("没看懂这一期的格式。请照这个样子输入：314期 24 39 21 27 35 06 T 44");
+    return;
+  }
+
+  const one = parsed[parsed.length-1];
+  // 同期号则替换，否则追加
+  const existIdx = draws.findIndex(x => String(x.issue) === String(one.issue));
+  if(existIdx >= 0) draws[existIdx] = one;
+  else draws.push(one);
+
+  setData(draws);                 // 内部会保存到本机浏览器
+  box.value = "";
+  alert("已保存第 " + one.issue + " 期（特码 " + pad2(one.special) + "），下次打开还在。");
 }
 
 function renderDrawList() {
@@ -678,7 +748,13 @@ try {
     const d = JSON.parse(saved);
     if(Array.isArray(d) && d.length > 0) {
       setData(d);
-      alert(`已恢复上次数据：共 ${d.length} 期`);
+      const body = document.getElementById("latest-body");
+      if(body) {
+        const tip = document.createElement("div");
+        tip.style.cssText = "margin-top:8px;font-size:12px;color:#22c55e;";
+        tip.textContent = "✅ 已自动载入上次记忆的 " + d.length + " 期，不用重新输入";
+        body.appendChild(tip);
+      }
     }
   }
 } catch(e) {}
