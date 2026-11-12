@@ -121,7 +121,8 @@ button.primary:hover { background: var(--accent); }
       <!-- 数据体检 -->
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
         <button class="primary" onclick="healthCheck()">🩺 数据体检</button>
-        <span class="hint" style="font-size:11px;color:var(--text-dim);">检查期号跳号、特码/平码越界与重复、生肖括号标注是否与当年生肖一致</span>
+        <button class="primary" onclick="backupData()">💾 数据备份（存到本电脑）</button>
+        <span class="hint" style="font-size:11px;color:var(--text-dim);">备份文件自己选保存位置（第一次请选 D:\AI数据，Chrome 会记住这个文件夹）；备份出来的 txt 以后可直接重新导入</span>
       </div>
       <div id="health-out" class="report" style="display:none;"></div>
 
@@ -290,6 +291,7 @@ const DEFAULT_CSV = "issue,date,n1,n2,n3,n4,n5,n6,special\n001,,24,39,21,27,35,6
 function parseCSV(text) {
   const lines = text.trim().split(/\r?\n/); const result = [];
   for (const line of lines) {
+    if (line.trim().charAt(0) === "#") continue;   // 备份文件里的注释行不参与解析
     const parts = line.split(",").map(s=>s.trim());
     if (parts.length < 9) continue;
     if (isNaN(parseInt(parts[2]))) continue;
@@ -688,6 +690,77 @@ function expectedZodiac(n, yearZ){
   const base = ZC_ORDER.indexOf(yearZ);
   if(base < 0) return "";
   return ZC_ORDER[(base + (n - 1) % 12) % 12];
+}
+
+// 💾 数据备份：还原成可再次导入的 txt，并让用户自己选保存位置
+function buildBackupText(list, tag){
+  const lines = [];
+  let prevKey = "";
+  const p3 = (s) => String(s).padStart(3, "0");
+  list.forEach((d) => {
+    const yz = d.yearZodiac || d.year_zodiac || "";
+    const yr = d.year || "";
+    const key = yr + "|" + yz;
+    const isNewSeg = (key !== prevKey);
+    if (isNewSeg && yr) lines.push(yr + "年（" + yz + "年）");
+    prevKey = key;
+    const nums = (d.normals && d.normals.length === 6) ? d.normals : [d.n1, d.n2, d.n3, d.n4, d.n5, d.n6];
+    const sz = d.specialZodiac || d.special_zodiac || "";
+    let line = p3(d.issue) + "期 " + nums.map(pad2).join(" ") + " T " + pad2(d.special) + "（" + sz + "）";
+    // 换肖标注必须贴在该期行尾，和原始记录写法一致（单独一行会导致重新导入时不认）
+    const mk = d.markerZ || (isNewSeg ? yz : "");
+    if (mk) line += "农历新年开始，新的生肖，从这期开始 " + mk + "年" + mk + "的号码是01 13 25 37 49";
+    lines.push(line);
+  });
+  const now = new Date();
+  const pad2d = (x) => String(x).padStart(2, "0");
+  const stamp = now.getFullYear() + "-" + pad2d(now.getMonth() + 1) + "-" + pad2d(now.getDate()) + " " + pad2d(now.getHours()) + ":" + pad2d(now.getMinutes());
+  lines.push("");
+  lines.push("# ===== 工作台备份信息（下面几行是说明，导入时会被忽略）=====");
+  lines.push("# 导出时间：" + stamp);
+  lines.push("# 数据：共 " + list.length + " 期");
+  lines.push("# 当前触发号码：" + (document.getElementById("triggers") ? document.getElementById("triggers").value : ""));
+  lines.push("# 回测触发：" + ((document.getElementById("bt-triggers") ? document.getElementById("bt-triggers").value : "")).replace(/,/g, " "));
+  lines.push("# 回测候选池：" + ((document.getElementById("bt-pool") ? document.getElementById("bt-pool").value : "")).replace(/,/g, " "));
+  lines.push("# 近N期：" + (document.getElementById("diag-n") ? document.getElementById("diag-n").value : ""));
+  return lines.join("\r\n");
+}
+
+async function saveTextFile(text, filename){
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: "文本文件", accept: { "text/plain": [".txt"] } }]
+      });
+      const w = await handle.createWritable();
+      await w.write(new Blob([text], { type: "text/plain;charset=utf-8" }));
+      await w.close();
+      alert("✅ 已保存到你选的位置：\n" + handle.name);
+      return true;
+    } catch (e) {
+      if (e && e.name === "AbortError") return false; // 用户取消
+      // 其他报错就退回下载方式
+    }
+  }
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  alert("✅ 已下载：" + filename + "\n（在浏览器的下载文件夹里；想自己选位置，可在设置里打开“下载前询问保存位置”）");
+  return true;
+}
+
+async function backupData(){
+  if(!draws.length){ alert("还没有数据，先导入或载入历史记录再备份"); return; }
+  const now = new Date();
+  const stamp = now.getFullYear() + String(now.getMonth()+1).padStart(2,"0") + String(now.getDate()).padStart(2,"0")
+    + "_" + String(now.getHours()).padStart(2,"0") + String(now.getMinutes()).padStart(2,"0");
+  const text = buildBackupText(draws);
+  window.__lastBackup = text;   // 便于自检（不影响使用）
+  await saveTextFile(text, "彩票历史记录备份_" + draws.length + "期_" + stamp + ".txt");
 }
 
 function healthCheck(){
