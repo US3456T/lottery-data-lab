@@ -741,6 +741,25 @@ document.addEventListener("drop", (e) => {
   if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
 });
 
+// ===== 输入框记忆：近N期 / 触发号码 / 候选池 / 问题，下次打开都还在 =====
+const MEMO_IDS = ["diag-n", "triggers", "bt-triggers", "bt-pool", "question"];
+function saveMemo(){
+  const m = {};
+  MEMO_IDS.forEach(id => { const el = document.getElementById(id); if(el) m[id] = el.value; });
+  try { localStorage.setItem("lottery_inputs", JSON.stringify(m)); } catch(e) {}
+}
+function loadMemo(){
+  let m = {};
+  try { m = JSON.parse(localStorage.getItem("lottery_inputs") || "{}") || {}; } catch(e) { m = {}; }
+  MEMO_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if(el && m[id] !== undefined && m[id] !== "") el.value = m[id];
+  });
+}
+document.addEventListener("input", e => { if(e.target && MEMO_IDS.indexOf(e.target.id) >= 0) saveMemo(); });
+document.addEventListener("change", e => { if(e.target && MEMO_IDS.indexOf(e.target.id) >= 0) saveMemo(); });
+loadMemo();
+
 // 从浏览器读取历史数据，刷新后不会清空
 try {
   const saved = localStorage.getItem("lottery_data");
