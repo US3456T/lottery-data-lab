@@ -291,12 +291,15 @@ function parseCSV(text) {
 // 解析 .txt 格式：001期 24 39 21 27 35 06 T 44（猴）
 function parseTxt(text) {
   const lines = text.split(/\r?\n/); const result = [];
-  let curYearZodiac = "";   // 来自“2000年（龙年）”这种年份标题
-  let curYear = "";
+  let headerYear = "", headerZ = "";   // 来自“2000年（龙年）”这种年份标题
+  let pendingMarker = "";              // “农历新年开始…”单独成行时，挂到下一期
   for (const line of lines) {
     // 年份标题：2000年（龙年）
     const ym = line.match(/(\d{4})年\s*[（(]?\s*([鼠牛虎兔龙蛇马羊猴鸡狗猪])\s*年/) || line.match(/(\d{4})年\s*([鼠牛虎兔龙蛇马羊猴鸡狗猪])/);
-    if (ym) { curYearZodiac = ym[2]; curYear = ym[1]; }
+    if (ym) { headerZ = ym[2]; headerYear = ym[1]; }
+    // 换肖标注：农历新年开始，新的生肖，从这期开始 牛年牛的号码是 01 13 25 37 49
+    const mk = line.match(/农历新年开始[^。]*?从这期[^\s]*\s*([鼠牛虎兔龙蛇马羊猴鸡狗猪])年/);
+    const markerZ = mk ? mk[1] : "";
     // 匹配：001期 24 39 21 27 35 06 T 44（猴）
     const m = line.match(/(\d+)期\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+T\s+(\d+)\s*[（(]?\s*([鼠牛虎兔龙蛇马羊猴鸡狗猪])?\s*[）)]?/);
     if (m) {
@@ -306,11 +309,35 @@ function parseTxt(text) {
         normals: [+m[2], +m[3], +m[4], +m[5], +m[6], +m[7]],
         special: +m[8],
         specialZodiac: m[9] || "",
-        yearZodiac: curYearZodiac,
-        year: curYear
+        markerZ: markerZ || pendingMarker,
+        hYear: headerYear,
+        hZ: headerZ
       });
+      pendingMarker = "";
+    } else if (markerZ) {
+      pendingMarker = markerZ;
     }
   }
+  // 生效生肖以“农历新年开始”标注为准；标注之前的一段算作上一年生肖
+  const firstMarker = result.filter(r => r.markerZ)[0];
+  let eff = "", effYear = "";
+  result.forEach(r => {
+    if (r.markerZ) {
+      eff = r.markerZ;
+      effYear = r.hYear || effYear;
+    }
+    if (!eff) {
+      if (firstMarker) {
+        eff = ZODIAC_ORDER[(ZODIAC_ORDER.indexOf(firstMarker.markerZ) + 1) % 12];
+        effYear = firstMarker.hYear ? String(+firstMarker.hYear - 1) : r.hYear;
+      } else {
+        eff = r.hZ || "鼠";
+        effYear = r.hYear;
+      }
+    }
+    r.yearZodiac = eff;
+    r.year = effYear || r.hYear;
+  });
   return result;
 }
 
@@ -516,8 +543,8 @@ function renderYearIndex(){
   let html = '<div style="font-weight:600;margin-bottom:6px;">📅 农历换肖一览（过年那期开始换生肖和号码）</div>';
   items.forEach((it, k) => {
     html += "<div style='padding:4px 0;border-bottom:1px dashed var(--border);'>" +
-      "<b>" + (it.year ? it.year + "年" : "第" + (k+1) + "段") + "</b> 农历" + it.yz + "年 · 从 <b style='color:#ef4444;'>" + it.issue + "期</b> 起换 · " +
-      it.yz + "的号码：01 13 25 37 49" + "</div>";
+      "<b>" + (it.year ? it.year + "年" : "第" + (k+1) + "段") + "</b> 农历新年开始 · 从 <b style='color:#ef4444;'>" + it.issue + "期</b> 起换 " + it.yz + "年 · " +
+      it.yz + "的号码是 01 13 25 37 49" + "</div>";
   });
   box.innerHTML = html;
   box.style.display = "block";
@@ -618,7 +645,7 @@ function renderDrawList() {
       const sep = document.createElement("div");
       sep.style.cssText = "text-align:center;font-weight:700;color:#666;background:#e0e0e0;padding:6px;margin:8px 0;border-radius:4px;font-size:14px;letter-spacing:2px;";
       const yearLabel = d.year ? (d.year + "年") : (YEAR_LIST[yearBoundaryCount] || (2000+yearBoundaryCount)+"年");
-      sep.textContent = "🔄 " + yearLabel + "农历" + yz + "年 换肖 → 从 " + d.issue + "期 起 · " + yz + "的号码：01 13 25 37 49";
+      sep.textContent = "🔄 " + yearLabel + " 农历新年开始 → 从 " + d.issue + "期 起换 " + yz + "年 · " + yz + "的号码是 01 13 25 37 49";
       list.appendChild(sep);
       lastYearZodiac = yz;
       lastYearKey = yearKey;
