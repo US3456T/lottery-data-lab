@@ -275,7 +275,12 @@ function parseCSV(text) {
 // 解析 .txt 格式：001期 24 39 21 27 35 06 T 44（猴）
 function parseTxt(text) {
   const lines = text.split(/\r?\n/); const result = [];
+  let curYearZodiac = "";   // 来自“2000年（龙年）”这种年份标题
+  let curYear = "";
   for (const line of lines) {
+    // 年份标题：2000年（龙年）
+    const ym = line.match(/(\d{4})年\s*[（(]?\s*([鼠牛虎兔龙蛇马羊猴鸡狗猪])\s*年/) || line.match(/(\d{4})年\s*([鼠牛虎兔龙蛇马羊猴鸡狗猪])/);
+    if (ym) { curYearZodiac = ym[2]; curYear = ym[1]; }
     // 匹配：001期 24 39 21 27 35 06 T 44（猴）
     const m = line.match(/(\d+)期\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+T\s+(\d+)\s*[（(]?\s*([鼠牛虎兔龙蛇马羊猴鸡狗猪])?\s*[）)]?/);
     if (m) {
@@ -284,7 +289,9 @@ function parseTxt(text) {
         date: "",
         normals: [+m[2], +m[3], +m[4], +m[5], +m[6], +m[7]],
         special: +m[8],
-        specialZodiac: m[9] || ""
+        specialZodiac: m[9] || "",
+        yearZodiac: curYearZodiac,
+        year: curYear
       });
     }
   }
@@ -300,7 +307,13 @@ function detectYearBoundaries() {
   yb.sort((a,b)=>a.startIdx-b.startIdx); yearBoundaries=yb;
 }
 function zodiacForIdx(idx){if(!yearBoundaries.length)return ZOY["马"]; let z="马"; for(const b of yearBoundaries){if(idx>=b.startIdx)z=b.zodiac; else break;} return ZOY[z]||ZOY["马"];}
-function zodiacOf(n,idx){return (idx!==undefined?zodiacForIdx(idx):ZOY["马"])[n]||"?";}
+function zodiacOf(n,idx){
+  // 历史记录里写了年份生肖（如“2000年（龙年）”）就以它为准
+  if(idx!==undefined && draws[idx] && draws[idx].yearZodiac && ZOY[draws[idx].yearZodiac]){
+    return ZOY[draws[idx].yearZodiac][n] || "?";
+  }
+  return (idx!==undefined? zodiacForIdx(idx):ZOY["马"])[n] || "?";
+}
 
 function countBy(arr,fn){const c={};for(const x of arr){const k=fn(x);c[k]=(c[k]||0)+1;}return c;}
 function parseNumbers(s){if(!s)return[];const parts=s.replace(/[，,、\s]+/g," ").trim().split(" ").filter(Boolean);const out=[];for(const p of parts){const n=parseInt(p);if(n>=1&&n<=49){out.push(n);continue;}if(ZODIAC_INPUT[p])out.push(...ZODIAC_INPUT[p]);}return[...new Set(out)];}
@@ -455,6 +468,8 @@ function addOneDraw(){
   }
 
   const one = parsed[parsed.length-1];
+  // 沿用上一条记录里的年份生肖，新增一期也能正确显示平码生肖
+  if(!one.yearZodiac && draws.length) one.yearZodiac = draws[draws.length-1].yearZodiac || "";
   // 同期号则替换，否则追加
   const existIdx = draws.findIndex(x => String(x.issue) === String(one.issue));
   if(existIdx >= 0) draws[existIdx] = one;
@@ -470,6 +485,7 @@ function renderDrawList() {
   if(!list) return;
   list.innerHTML = "";
   let lastYearZodiac = "";
+  let lastYearKey = "";
   let yearBoundaryCount = 0;
   const YEAR_LIST = ["2000年","2001年","2002年","2003年","2004年","2005年","2006年","2007年","2008年","2009年",
     "2010年","2011年","2012年","2013年","2014年","2015年","2016年","2017年","2018年","2019年",
@@ -479,13 +495,16 @@ function renderDrawList() {
     // 检测年份生肖变化
     let yz = "马";
     for(const b of yearBoundaries){ if(idx>=b.startIdx) yz=b.zodiac; }
-    if (yz !== lastYearZodiac) {
+    if(d.yearZodiac) yz = d.yearZodiac;
+    const yearKey = (d.year ? d.year : "") + "-" + yz;
+    if (yearKey !== lastYearKey) {
       const sep = document.createElement("div");
       sep.style.cssText = "text-align:center;font-weight:700;color:#666;background:#e0e0e0;padding:6px;margin:8px 0;border-radius:4px;font-size:14px;letter-spacing:2px;";
-      const yearLabel = YEAR_LIST[yearBoundaryCount] || (2000+yearBoundaryCount)+"年";
+      const yearLabel = d.year ? (d.year + "年") : (YEAR_LIST[yearBoundaryCount] || (2000+yearBoundaryCount)+"年");
       sep.textContent = yearLabel + "农历" + yz + "年（" + yz + "的号码是：01 13 25 37 49）";
       list.appendChild(sep);
       lastYearZodiac = yz;
+      lastYearKey = yearKey;
       yearBoundaryCount++;
     }
 
