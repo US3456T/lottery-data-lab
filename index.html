@@ -122,6 +122,7 @@ button.primary:hover { background: var(--accent); }
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
         <button class="primary" onclick="healthCheck()">🩺 数据体检</button>
         <button class="primary" onclick="backupData()">💾 数据备份（存到本电脑）</button>
+        <button class="primary" onclick="document.getElementById('file-input').click()">📂 打开备份文件（恢复）</button>
         <span class="hint" style="font-size:11px;color:var(--text-dim);">备份文件自己选保存位置（第一次请选 D:\AI数据，Chrome 会记住这个文件夹）；备份出来的 txt 以后可直接重新导入</span>
       </div>
       <div id="health-out" class="report" style="display:none;"></div>
