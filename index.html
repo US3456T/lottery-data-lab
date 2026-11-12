@@ -1710,6 +1710,15 @@ function arenaRender(){
   if (p) p.textContent = "进度 " + ARENA.round + " / " + ARENA.rounds + " 轮　已做 " + ARENA.total.toLocaleString() + " 次预测" + (ARENA.running ? "（跑着呢，可以切去别的页签）" : "");
   var out = document.getElementById("arena-out");
   if (!out) return;
+  if (!ARENA.total && !ARENA.running){
+    var ch0 = arenaChampion();
+    out.innerHTML = (ch0 ? "<div style='margin-bottom:8px;padding:8px;border:1px solid #16a34a;border-radius:6px;background:#f0fdf4;font-size:12px;'>👑 上次冠军：<b>" + ch0.model + "</b>　前18码 " + ch0.top18 + "%（" + ch0.preds.toLocaleString() + " 次样本）</div>" : "")
+      + "<div style='font-size:12px;color:#444;line-height:1.9;padding:8px;'>"
+      + "还没开始比。<br>先到【历史数据】页载入记录（或从【开奖数据源】粘贴入库），再回到这里点「开始竞技」。<br>"
+      + "「跑每轮模拟期数」默认 1500、「跑多少轮」默认 20，就是 20 段 × 1500 期 = 3 万次预测／每个引擎。<br>"
+      + "跑完这里会出现 12 个引擎的排名表，第一名会显示 👑 冠军；机器慢的话可以把期数改成 500、轮数改成 5 先试。</div>";
+    return;
+  }
   var snap = arenaSnapshot();
   var bar = function(v, base){ return "<div style='background:#e5e7eb;height:10px;border-radius:5px;width:110px;display:inline-block;vertical-align:middle;'><div style='background:" + (v >= base ? "#16a34a" : "#9ca3af") + ";height:10px;border-radius:5px;width:" + Math.min(100, v / 50 * 100) + "%'></div></div>"; };
   var html = "";
@@ -1898,12 +1907,24 @@ function ledgerStep(S){
       var i = S.i;
       nnEncode(S.X, SP, i);
       nnForward(LEDGER.model, S.X, S.H, S.P);
-      for (var k = 1; k <= 49; k++) S.arr[k] = Math.round(S.P[k-1] * 1000000);
+      // 打分 = 模型概率 60% + 最近60期热度 30% + 遗漏 10%（三者都随期变化，预测不会每期一模一样）
+      var cnt = new Float64Array(50), gap = new Float64Array(50);
+      for (var q = 1; q <= 49; q++) gap[q] = 99;
+      for (var j2 = Math.max(0, i - 60); j2 < i; j2++){
+        var sj = SP[j2]; cnt[sj]++;
+        gap[sj] = Math.min(gap[sj], i - j2);
+      }
+      for (var k = 1; k <= 49; k++){
+        var sc = S.P[k-1] * 0.6 + (cnt[k] / 60) * 0.3 + (Math.min(1, gap[k] / 49)) * 0.1;
+        S.arr[k] = Math.round(sc * 1000000);
+      }
       var pool = arenaPick(S.arr, 18, true);
       var truth = SP[i];
       LEDGER.rows.push({
         issue: String(draws[i].issue),
+        idx: i,
         pred: pool.slice(0, 6),
+        pred18: pool.slice(),
         special: truth,
         hit: pool.indexOf(truth) >= 0 ? 1 : 0,
         hitTop6: pool.slice(0, 6).indexOf(truth) >= 0 ? 1 : 0,
@@ -1925,6 +1946,29 @@ function ledgerStep(S){
   if (S.manual && !S.added) alert("没有新期可结算（流水已覆盖到第 " + (LEDGER.rows.length ? LEDGER.rows[LEDGER.rows.length-1].issue : "-") + " 期）");
 }
 
+// 号码属性：波色 / 尾数 / 合数 / 大小 / 单双 / 段数 / 生肖（生肖按农历正月初一换）
+function numAttrs(n, idx){
+  var c = colorOf(n);
+  var tail = n % 10;
+  var sum = Math.floor(n / 10) + tail;
+  var zo = "";
+  try { zo = zodiacOf(n, idx); } catch(e) { zo = ""; }
+  return { color: c === "red" ? "红波" : (c === "blue" ? "蓝波" : "绿波"),
+           tail: tail, sum: sum, big: n >= 25 ? "大" : "小", odd: (n % 2) ? "单" : "双",
+           seg: (n <= 12 ? "1段(01-12)" : (n <= 24 ? "2段(13-24)" : (n <= 36 ? "3段(25-36)" : "4段(37-49)"))),
+           zod: zo };
+}
+function attrLine(n, idx){
+  var a = numAttrs(n, idx);
+  return pad2(n) + "　" + a.color + "／" + a.zod + "／尾" + a.tail + "／合" + a.sum + "／" + a.big + a.odd;
+}
+
+function ballChip(n, idx){
+  var a = numAttrs(n, idx);
+  var bg = a.color === "红波" ? "#e11d48" : (a.color === "蓝波" ? "#2563eb" : "#16a34a");
+  return "<span style='display:inline-block;margin:2px;padding:3px 7px;border-radius:4px;background:" + bg + ";color:#fff;font-size:12px;'>" + pad2(n) + " " + a.zod + "</span>";
+}
+
 function ledgerRender(){
   var stat = document.getElementById("ledger-stat"), tb = document.getElementById("ledger-table");
   if (!stat) return;
@@ -1935,12 +1979,25 @@ function ledgerRender(){
   var nTrained = LEDGER.model ? LEDGER.model.n : 0;
   stat.innerHTML = "已结算 <b>" + n + "</b> 期｜前6码命中 " + hit6 + " 期（" + pct6 + "%，随机 12.24%）｜前18码命中 " + hit18 + " 期（" + pct18 + "%，随机 36.73%）｜模型已训练 " + nTrained + " 步";
   if (!n){ tb.innerHTML = "<div style='color:#666;font-size:12px;padding:6px;'>还没有流水。载入数据后点「立即结算新期」，或等着它自动结算。</div>"; return; }
+  var last = LEDGER.rows[n-1];
+  var p18 = last.pred18 || last.pred;
+  var chips = p18.map(function(x){ return ballChip(x, last.idx); }).join("");
+  var sixAttr = last.pred.map(function(x){ return attrLine(x, last.idx); }).join("<br>");
+  var panel = "<div style='margin:8px 0 10px;padding:10px;border:1px solid #2563eb;border-radius:6px;background:#f8fbff;font-size:12px;line-height:1.8;'>"
+    + "<b>最新一期（第 " + last.issue + " 期）AI 给出的前18码</b>（点「立即结算新期」会重新算一遍）<br>"
+    + "<div style='margin:6px 0;'>" + chips + "</div>"
+    + "<b>其中前6码的属性（生肖按农历正月初一换肖）</b><br>" + sixAttr
+    + "<div style='color:#666;margin-top:6px;'>用法：这 18 个就是本期覆盖范围；前 6 个是重点号。实际开奖后，页面会自动把「预测 vs 实际」记进下面的表，命中率一直累计。</div></div>";
   var rows = LEDGER.rows.slice(-40).reverse();
-  var html = "<table style='width:100%;border-collapse:collapse;font-size:12px;'><tr style='background:#e0e0e0;'><th style='padding:4px;'>期号</th><th>AI 预测前6码</th><th>实际特码</th><th>前6码</th><th>前18码</th><th>日期</th></tr>";
+  var html = panel + "<table style='width:100%;border-collapse:collapse;font-size:12px;'><tr style='background:#e0e0e0;'><th style='padding:4px;'>期号</th><th>AI 预测前6码</th><th>实际特码</th><th>前6码</th><th>前18码</th><th>日期</th></tr>";
   rows.forEach(function(r){
     var c1 = r.hitTop6 ? "#16a34a" : "#9ca3af";
     var c2 = r.hit ? "#16a34a" : "#ef4444";
-    html += "<tr style='border-bottom:1px solid #eee;'><td style='padding:4px;'>" + r.issue + "期</td><td style='text-align:center;'>" + r.pred.map(pad2).join(" ") + "</td><td style='text-align:center;font-weight:700;'>" + pad2(r.special) + "</td><td style='text-align:center;color:" + c1 + ";'>" + (r.hitTop6 ? "中" : "—") + "</td><td style='text-align:center;color:" + c2 + ";font-weight:700;'>" + (r.hit ? "中" : "错") + "</td><td style='text-align:center;color:#888;'>" + r.t + "</td></tr>";
+    var sa = numAttrs(r.special, r.idx);
+    var sc = sa.color === "红波" ? "#e11d48" : (sa.color === "蓝波" ? "#2563eb" : "#16a34a");
+    html += "<tr style='border-bottom:1px solid #eee;'><td style='padding:4px;'>" + r.issue + "期</td><td style='text-align:center;'>" + r.pred.map(pad2).join(" ") + "</td>"
+      + "<td style='text-align:center;font-weight:700;'><span style='color:" + sc + ";'>" + pad2(r.special) + "</span><br><span style='font-size:10px;color:#666;font-weight:400;'>" + sa.color + " " + sa.zod + " 尾" + sa.tail + " 合" + sa.sum + " " + sa.big + sa.odd + "</span></td>"
+      + "<td style='text-align:center;color:" + c1 + ";'>" + (r.hitTop6 ? "中" : "—") + "</td><td style='text-align:center;color:" + c2 + ";font-weight:700;'>" + (r.hit ? "中" : "错") + "</td><td style='text-align:center;color:#888;'>" + r.t + "</td></tr>";
   });
   html += "</table>";
   tb.innerHTML = html;
