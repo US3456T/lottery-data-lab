@@ -137,7 +137,7 @@ button.primary:hover { background: var(--accent); }
     <div class="tab-pane" id="pane-trigger">
       <div class="row">
         <label>触发号码：</label>
-        <input type="text" id="triggers" value="40,41,42,43,44,45,46,47,48" style="flex:1">
+        <input type="text" id="triggers" placeholder="最新一期的特码和生肖，例：48 羊" style="flex:1">
         <button class="primary" onclick="genTrigger()">跑触发-滞后</button>
       </div>
       <div id="trigger-out" class="report"></div>
@@ -415,6 +415,17 @@ function renderLatest(){
   html += "</div>";
   html += "<div style='font-size:12px;color:var(--text);'>特码 " + pad2(d.special) + "（" + z + "） ｜ " + ballColor(d.special) + "波 ｜ " + head + "头" + tail + "尾 ｜ " + (d.special>=25?"大":"小") + " ｜ " + (d.special%2===1?"单":"双") + "</div>";
   bodies.forEach(b => { b.innerHTML = html; });
+  fillTriggerFromLatest();
+}
+
+// 触发号码自动填成最新一期的“特码 生肖”，例：48 羊
+let triggerManual = false;
+function fillTriggerFromLatest(){
+  const el = document.getElementById("triggers");
+  if(!el || triggerManual || !draws.length) return;
+  const lastIdx = draws.length - 1;
+  const d = draws[lastIdx];
+  el.value = pad2(d.special) + " " + zodiacOf(d.special, lastIdx);
 }
 
 // 新增一期，直接追加并记住
@@ -581,7 +592,14 @@ ${Object.entries(fz).map(([z,c])=>`${z}:${c}`).join("  ")}
 
 function genTrigger(){
   if(!draws.length){alert("请先加载数据");return;}
-  const nums=parseNumbers(document.getElementById("triggers").value);
+  const raw = document.getElementById("triggers").value || "";
+  const tokens = raw.replace(/[，,、\s]+/g, " ").trim().split(" ").filter(Boolean);
+  // 有数字就只按数字触发；只写了生肖才按该生肖号码触发
+  let nums = tokens.map(t => parseInt(t)).filter(n => n >= 1 && n <= 49);
+  if(!nums.length){
+    tokens.forEach(t => { if(ZODIAC_INPUT[t]) nums.push(...ZODIAC_INPUT[t]); });
+  }
+  nums = [...new Set(nums)];
   if(!nums.length){alert("请输入触发号码");return;}
   const r=triggerLag(nums);
   document.getElementById("trigger-out").textContent=
@@ -756,7 +774,7 @@ function loadMemo(){
     if(el && m[id] !== undefined && m[id] !== "") el.value = m[id];
   });
 }
-document.addEventListener("input", e => { if(e.target && MEMO_IDS.indexOf(e.target.id) >= 0) saveMemo(); });
+document.addEventListener("input", e => { if(e.target && MEMO_IDS.indexOf(e.target.id) >= 0){ if(e.target.id === "triggers") triggerManual = true; saveMemo(); } });
 document.addEventListener("change", e => { if(e.target && MEMO_IDS.indexOf(e.target.id) >= 0) saveMemo(); });
 loadMemo();
 
