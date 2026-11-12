@@ -156,12 +156,15 @@ button.primary:hover { background: var(--accent); }
     <div class="tab-pane" id="pane-backtest">
       <div class="row">
         <label>触发号码：</label>
-        <input type="text" id="bt-triggers" value="40,48" style="flex:1">
+        <input type="text" id="bt-triggers" value="11,26,30,34,36,38,45,49" style="flex:1">
       </div>
       <div class="row">
         <label>候选池：</label>
-        <input type="text" id="bt-pool" value="1,2,3,4,5,6,7,8,9,10,11,12" style="flex:1">
+        <input type="text" id="bt-pool" value="2,4,6,7,8,10,13,14,20,24,27,34,35,36,38,40,41,42" style="flex:1">
         <button class="primary" onclick="genBacktest()">跑全历史回测</button>
+      </div>
+      <div class="row">
+        <button onclick="autoFillOptimal()">🤖 自动填最优组合（按当前数据全历史算）</button>
       </div>
       <div id="backtest-out" class="report"></div>
 
@@ -863,6 +866,54 @@ function genBacktest(){
 
 📜 逐期序列（✓=中 ✗=未中）：
 ${seq}`;
+}
+
+// 按当前数据全历史自动挑“出错率最低”的组合：候选池18码 + 触发号码
+function autoFillOptimal(){
+  if(!draws.length){alert("请先加载历史数据");return;}
+  const sp = draws.map(d=>d.special);
+  const N = sp.length;
+  // 1) 候选池：全历史特码出现次数最多的 18 个（等价于贪心最优）
+  const cnt = {}; for(let x=1;x<=49;x++) cnt[x]=0;
+  sp.forEach(x=>{ if(x>=1&&x<=49) cnt[x]++; });
+  const pool18 = [...Array(49).keys()].map(x=>x+1).sort((a,b)=> (cnt[b]-cnt[a]) || a-b).slice(0,18);
+  const poolSet = new Set(pool18);
+  // 2) 触发号码：贪心挑 8 个，令「命中率 - 1.2×最长连错」最高
+  function stat(trigSet){
+    const seq = [];
+    for(let i=0;i<N-1;i++) if(trigSet.has(sp[i])) seq.push(poolSet.has(sp[i+1])?1:0);
+    if(!seq.length) return {n:0,hits:0,rate:0,maxMiss:0};
+    let hits=0,run=0,mx=0;
+    seq.forEach(v=>{ if(v){hits++; run=0;} else {run++; if(run>mx) mx=run;} });
+    return {n:seq.length,hits,rate:hits/seq.length*100,maxMiss:mx};
+  }
+  const trigs = new Set();
+  for(let k=0;k<8;k++){
+    let best=null,bestScore=-1e9;
+    for(let t=1;t<=49;t++){
+      if(trigs.has(t)) continue;
+      const s = stat(new Set([...trigs,t]));
+      if(s.n < 30) continue;
+      const score = s.rate - s.maxMiss*1.2;
+      if(score > bestScore){ bestScore=score; best=t; }
+    }
+    if(best===null) break;
+    trigs.add(best);
+  }
+  const final = stat(trigs);
+  document.getElementById("bt-triggers").value = [...trigs].sort((a,b)=>a-b).map(pad2).join(",");
+  document.getElementById("bt-pool").value = [...pool18].sort((a,b)=>a-b).map(pad2).join(",");
+  const out = document.getElementById("backtest-out");
+  out.textContent =
+`🤖 已按当前 ${N} 期全历史挑好组合
+触发号码：${[...trigs].sort((a,b)=>a-b).map(pad2).join(" ")}
+候选池（18码）：${[...pool18].sort((a,b)=>a-b).map(pad2).join(" ")}
+
+这套组合在这份历史上的成绩：
+总触发 ${final.n} 次，命中 ${final.hits} 次，命中率 ${final.rate.toFixed(2)}%，最长连错 ${final.maxMiss} 期
+
+⚠️ 说明：这两个数都是按同一份历史挑出来的（样本内成绩），换一份数据会回落。
+盲目当作稳赚不可取，建议再点【跑全历史回测】自己看逐期序列。`;
 }
 
 function askAll(){
