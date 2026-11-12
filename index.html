@@ -1669,7 +1669,26 @@ function arenaTick(){
   }
   arenaRender();
   if (ARENA.round < ARENA.rounds) setTimeout(arenaTick, 0);
-  else { ARENA.running = false; ARENA.lastResult = arenaSnapshot(); }
+  else { ARENA.running = false; ARENA.lastResult = arenaSnapshot(); arenaSaveChampion(ARENA.lastResult); }
+}
+
+// 冠军自动选举：把实测排名第一的引擎记下来，供页面长期使用
+function arenaSaveChampion(snap){
+  try {
+    if (!snap || !snap.rows || !snap.rows.length) return;
+    if (snap.totalPreds < 300) return;          // 样本太小不选，免得选到运气
+    var top = snap.rows[0];
+    var rec = { model: top.model, top18: top.top18, top6: top.top6, top1: top.top1,
+                preds: snap.totalPreds, rounds: snap.round, span: snap.span, at: snap.at };
+    localStorage.setItem("ai_champion", JSON.stringify(rec));
+  } catch(e){}
+}
+function arenaChampion(){
+  try {
+    var s = localStorage.getItem("ai_champion");
+    if (s) return JSON.parse(s);
+  } catch(e){}
+  return null;
 }
 
 function arenaSnapshot(){
@@ -1693,7 +1712,15 @@ function arenaRender(){
   if (!out) return;
   var snap = arenaSnapshot();
   var bar = function(v, base){ return "<div style='background:#e5e7eb;height:10px;border-radius:5px;width:110px;display:inline-block;vertical-align:middle;'><div style='background:" + (v >= base ? "#16a34a" : "#9ca3af") + ";height:10px;border-radius:5px;width:" + Math.min(100, v / 50 * 100) + "%'></div></div>"; };
-  var html = "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
+  var html = "";
+  var ch = arenaChampion();
+  if (ch){
+    html += "<div style='margin-bottom:8px;padding:8px;border:1px solid #16a34a;border-radius:6px;background:#f0fdf4;font-size:12px;line-height:1.7;'>"
+          + "<b>👑 当前冠军引擎：" + ch.model + "</b>　前18码 " + ch.top18 + "%（随机线 36.73%）"
+          + "<br>选举样本 " + ch.preds.toLocaleString() + " 次（" + ch.rounds + " 轮 × " + ch.span + " 期），选举时间 " + ch.at
+          + "<br>页面之后按这个引擎的记录继续算流水；重跑竞技会重新选举。</div>";
+  }
+  html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
   html += "<tr style='background:#e0e0e0;'><th style='text-align:left;padding:5px;'>引擎</th><th style='padding:5px;'>特码单号</th><th style='padding:5px;'>前6码覆盖</th><th style='padding:5px;'>前18码覆盖</th><th style='padding:5px;'>相对随机</th></tr>";
   snap.rows.forEach(function(r, idx){
     var lift = (r.top18 - 36.73).toFixed(2);
