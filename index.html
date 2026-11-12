@@ -91,6 +91,7 @@ button.primary:hover { background: var(--accent); }
       <button class="tab" data-tab="diag">📊 综合诊断</button>
       <button class="tab" data-tab="trigger">🎯 触发-滞后</button>
       <button class="tab" data-tab="backtest">🔁 全历史回测</button>
+      <button class="tab" data-tab="arena">🧪 AI 竞技评测</button>
       <button class="tab active" data-tab="chat">🤖 AI 对话</button>
     </nav>
 
@@ -181,6 +182,23 @@ button.primary:hover { background: var(--accent); }
         <button class="primary" onclick="runStrategyCompare()">跑策略对照回测（最近1500期）</button>
       </div>
       <div id="strategy-out" class="report"></div>
+    </div>
+
+    <div class="tab-pane" id="pane-arena">
+      <div class="row">
+        <label>每轮模拟期数：</label>
+        <input type="text" id="arena-span" value="1500" style="width:90px">
+        <label>跑多少轮：</label>
+        <input type="text" id="arena-rounds" value="20" style="width:70px">
+        <button class="primary" onclick="arenaStart()">开始竞技</button>
+        <button onclick="arenaStop()">停止</button>
+        <button onclick="arenaSave()">💾 导出结果</button>
+      </div>
+      <div class="row">
+        <span class="hint">规则：每轮从历史里随机截一段连续 1500 期，只用当期之前的数据预测当期，命中即算分。轮次越多越稳，可以放到几百轮慢慢跑。</span>
+      </div>
+      <div id="arena-progress" style="font-size:12px;color:var(--accent);padding:4px 0;"></div>
+      <div id="arena-out" class="report"></div>
     </div>
 
     <div class="tab-pane active" id="pane-chat">
@@ -1258,6 +1276,195 @@ try {
     }
   }
 } catch(e) {}
+// ===== AI 竞技评测：多个预测引擎 + 自我学习引擎，同场跑同一段历史 =====
+var ARENA = { running:false, agg:null, total:0, round:0, rounds:0, span:1500, seed:1, pre:null, preN:-1 };
+
+function arenaRng(s){ var x = s || 1; return function(){ x ^= x << 13; x ^= x >>> 17; x ^= x << 5; x = x >>> 0; return x / 4294967296; }; }
+
+function arenaBuildPre(){
+  if (ARENA.pre && ARENA.preN === draws.length) return ARENA.pre;
+  var n = draws.length;
+  var pre = new Array(n + 1);
+  pre[0] = new Int32Array(50);
+  for (var i = 0; i < n; i++){
+    var row = new Int32Array(pre[i]);
+    row[draws[i].special] += 1;
+    pre[i+1] = row;
+  }
+  ARENA.pre = pre; ARENA.preN = n;
+  return pre;
+}
+
+function arenaPick(arr, n, desc){
+  var used = new Uint8Array(50), res = [];
+  var cnt = Math.min(n, 49);
+  for (var t = 0; t < cnt; t++){
+    var bk = 0, bv = null;
+    for (var k = 1; k <= 49; k++){
+      if (used[k]) continue;
+      var v = arr[k];
+      if (bv === null){ bv = v; bk = k; continue; }
+      if (desc ? (v > bv || (v === bv && k < bk)) : (v < bv || (v === bv && k < bk))) { bv = v; bk = k; }
+    }
+    if (!bk) break;
+    used[bk] = 1; res.push(bk);
+  }
+  return res;
+}
+
+function arenaTrial(seed, span){
+  var rng = arenaRng(seed);
+  var n = draws.length, pre = arenaBuildPre();
+  var start = 55 + Math.floor(rng() * Math.max(1, n - span - 60));
+  var end = Math.min(n, start + span);
+
+  var names = ["热号(近50)","冷号(近50)","遗漏回补","马尔可夫","尾数热","综合评分","自我学习","随机基线"];
+  var hit = {}; names.forEach(function(nm){ hit[nm] = {t1:0,t6:0,t18:0}; });
+
+  // 自我学习：49 个号码各带一份权重，每期按“是否命中”做乘性更新
+  var w = new Float64Array(50).fill(1);
+  var seen = new Int32Array(50).fill(-1);   // 每个号码最近一次出现的位置
+  var j;
+  for (j = Math.max(0, start - 400); j < start; j++) seen[draws[j].special] = j;
+
+  for (var i = start; i < end; i++){
+    var truth = draws[i].special;
+    var lo50 = Math.max(0, i - 50), lo100 = Math.max(0, i - 100), lo300 = Math.max(1, i - 300);
+    var heat = new Int32Array(50), gap = new Int32Array(50), comp = new Int32Array(50);
+    for (var k = 1; k <= 49; k++){
+      var c = pre[i][k] - pre[lo50][k];
+      heat[k] = c;
+      gap[k] = (seen[k] < 0) ? 400 : (i - seen[k]);
+      comp[k] = c * 10 + Math.min(gap[k], 120);
+    }
+    var preds = {};
+    preds["热号(近50)"] = arenaPick(heat, 18, true);
+    preds["冷号(近50)"] = arenaPick(heat, 18, false);
+    preds["遗漏回补"] = arenaPick(gap, 18, true);
+    preds["综合评分"] = arenaPick(comp, 18, true);
+
+    // 马尔可夫：上期特码 → 历史后继
+    var prev = draws[i-1].special, tran = new Int32Array(50), any = false;
+    for (var t2 = i - 1; t2 >= lo300; t2--){
+      if (draws[t2-1] && draws[t2-1].special === prev){ tran[draws[t2].special] += 1; any = true; }
+    }
+    preds["马尔可夫"] = any ? arenaPick(tran, 18, true) : arenaPick(heat, 18, true);
+
+    // 尾数热
+    var tail = new Int32Array(10), tl = new Int32Array(50);
+    for (var k2 = 1; k2 <= 49; k2++) tail[k2 % 10] += pre[i][k2] - pre[lo100][k2];
+    for (var k3 = 1; k3 <= 49; k3++) tl[k3] = tail[k3 % 10] * 100 + (pre[i][k3] - pre[lo100][k3]);
+    preds["尾数热"] = arenaPick(tl, 18, true);
+
+    // 自我学习：权重最高 + 近期热度加成
+    var score = new Int32Array(50);
+    for (var k4 = 1; k4 <= 49; k4++) score[k4] = Math.round(w[k4] * 1000) + heat[k4];
+    preds["自我学习"] = arenaPick(score, 18, true);
+
+    // 随机基线
+    var pool = [];
+    for (var q = 1; q <= 49; q++) pool.push(q);
+    for (var q2 = pool.length - 1; q2 > 0; q2--){ var rj = Math.floor(rng() * (q2 + 1)); var tmp = pool[q2]; pool[q2] = pool[rj]; pool[rj] = tmp; }
+    preds["随机基线"] = pool.slice(0, 18);
+
+    for (var nm in preds){
+      var o = preds[nm];
+      var pos = o.indexOf(truth);
+      if (o[0] === truth) hit[nm].t1++;
+      if (pos >= 0 && pos < 6) hit[nm].t6++;
+      if (pos >= 0) hit[nm].t18++;
+    }
+
+    // 学习更新：命中→权重增大，未命中→略微降低（保持总量归一）
+    var sum = 0;
+    for (var k5 = 1; k5 <= 49; k5++){
+      w[k5] *= (k5 === truth ? 1.06 : 0.9989);
+      if (w[k5] < 0.2) w[k5] = 0.2;
+      if (w[k5] > 5) w[k5] = 5;
+      sum += w[k5];
+    }
+    if (sum > 0) for (var k6 = 1; k6 <= 49; k6++) w[k6] *= 49 / sum;
+
+    seen[truth] = i;
+  }
+  return { hit: hit, span: end - start };
+}
+
+function arenaStart(){
+  if (ARENA.running) return;
+  if (!draws.length){ alert("请先在【历史数据】里载入数据"); return; }
+  ARENA.span = Math.max(200, parseInt(document.getElementById("arena-span").value, 10) || 1500);
+  ARENA.rounds = Math.max(1, parseInt(document.getElementById("arena-rounds").value, 10) || 20);
+  if (ARENA.span > draws.length - 70) ARENA.span = Math.max(200, draws.length - 70);
+  ARENA.running = true; ARENA.total = 0; ARENA.round = 0; ARENA.seed = 1;
+  ARENA.agg = {};
+  ["热号(近50)","冷号(近50)","遗漏回补","马尔可夫","尾数热","综合评分","自我学习","随机基线"].forEach(function(nm){
+    ARENA.agg[nm] = {t1:0,t6:0,t18:0};
+  });
+  ARENA.pre = null; ARENA.preN = -1;
+  arenaBuildPre();
+  arenaTick();
+}
+
+function arenaTick(){
+  if (!ARENA.running) return;
+  var t0 = Date.now();
+  while (ARENA.running && ARENA.round < ARENA.rounds && Date.now() - t0 < 220){
+    var r = arenaTrial(ARENA.seed, ARENA.span);
+    ARENA.seed += 1; ARENA.round += 1; ARENA.total += r.span;
+    for (var nm in r.hit){
+      ARENA.agg[nm].t1 += r.hit[nm].t1;
+      ARENA.agg[nm].t6 += r.hit[nm].t6;
+      ARENA.agg[nm].t18 += r.hit[nm].t18;
+    }
+  }
+  arenaRender();
+  if (ARENA.round < ARENA.rounds) setTimeout(arenaTick, 0);
+  else { ARENA.running = false; ARENA.lastResult = arenaSnapshot(); }
+}
+
+function arenaSnapshot(){
+  var total = ARENA.total || 1, rows = [];
+  for (var nm in ARENA.agg){
+    rows.push({
+      model: nm,
+      top1: +(ARENA.agg[nm].t1 / total * 100).toFixed(2),
+      top6: +(ARENA.agg[nm].t6 / total * 100).toFixed(2),
+      top18: +(ARENA.agg[nm].t18 / total * 100).toFixed(2)
+    });
+  }
+  rows.sort(function(a,b){ return b.top18 - a.top18; });
+  return { span: ARENA.span, rounds: ARENA.round, totalPreds: ARENA.total, at: new Date().toLocaleString(), rows: rows };
+}
+
+function arenaRender(){
+  var p = document.getElementById("arena-progress");
+  if (p) p.textContent = "进度 " + ARENA.round + " / " + ARENA.rounds + " 轮　已做 " + ARENA.total.toLocaleString() + " 次预测" + (ARENA.running ? "（跑着呢，可以切去别的页签）" : "");
+  var out = document.getElementById("arena-out");
+  if (!out) return;
+  var snap = arenaSnapshot();
+  var bar = function(v, base){ return "<div style='background:#e5e7eb;height:10px;border-radius:5px;width:110px;display:inline-block;vertical-align:middle;'><div style='background:" + (v >= base ? "#16a34a" : "#9ca3af") + ";height:10px;border-radius:5px;width:" + Math.min(100, v / 50 * 100) + "%'></div></div>"; };
+  var html = "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
+  html += "<tr style='background:#e0e0e0;'><th style='text-align:left;padding:5px;'>引擎</th><th style='padding:5px;'>特码单号</th><th style='padding:5px;'>前6码覆盖</th><th style='padding:5px;'>前18码覆盖</th><th style='padding:5px;'>相对随机</th></tr>";
+  snap.rows.forEach(function(r, idx){
+    var lift = (r.top18 - 36.73).toFixed(2);
+    html += "<tr style='border-bottom:1px solid #ddd;'><td style='padding:5px;'>" + (idx === 0 ? "🥇 " : "") + r.model + "</td><td style='padding:5px;text-align:center;'>" + r.top1 + "%</td><td style='padding:5px;text-align:center;'>" + r.top6 + "%</td><td style='padding:5px;text-align:center;'>" + bar(r.top18, 36.73) + " " + r.top18 + "%</td><td style='padding:5px;text-align:center;color:" + (lift > 0 ? "#16a34a" : "#ef4444") + ";'>" + (lift > 0 ? "+" : "") + lift + "</td></tr>";
+  });
+  html += "</table>";
+  html += "<div style='margin-top:8px;font-size:12px;color:#555;line-height:1.7;'>理论随机值：单号 2.04% ／ 前6码 12.24% ／ 前18码 36.73%。<br>样本量 " + snap.totalPreds.toLocaleString() + " 次预测（" + snap.round + " 轮 × " + snap.span + " 期）。<br><b>看结论的方法</b>：只有明显高于 36.73% 才算真本事；上下摆动 1~2 个百分点是随机波动，不算。</div>";
+  out.innerHTML = html;
+}
+
+function arenaStop(){ ARENA.running = false; arenaRender(); }
+
+function arenaSave(){
+  var snap = ARENA.lastResult || arenaSnapshot();
+  var txt = "AI 竞技评测结果\n" + snap.at + "\n轮次 " + snap.round + " × 每轮 " + snap.span + " 期　总预测 " + snap.totalPreds + " 次\n\n";
+  txt += "引擎\t特码单号%\t前6码%\t前18码%\n";
+  snap.rows.forEach(function(r){ txt += r.model + "\t" + r.top1 + "\t" + r.top6 + "\t" + r.top18 + "\n"; });
+  txt += "\n理论随机值：2.04 / 12.24 / 36.73（%）\n";
+  saveTextFile(txt, "AI竞技评测结果_" + Date.now() + ".txt");
+}
 </script>
 </body>
 </html>
