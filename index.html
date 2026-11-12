@@ -118,6 +118,13 @@ button.primary:hover { background: var(--accent); }
       <!-- 农历换肖一览 -->
       <div id="year-index" style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:12px;font-size:12px;display:none;"></div>
 
+      <!-- 数据体检 -->
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+        <button class="primary" onclick="healthCheck()">🩺 数据体检</button>
+        <span class="hint" style="font-size:11px;color:var(--text-dim);">检查期号跳号、特码/平码越界与重复、生肖括号标注是否与当年生肖一致</span>
+      </div>
+      <div id="health-out" class="report" style="display:none;"></div>
+
       <!-- 新增一期 -->
       <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;">
         <input id="new-draw" placeholder="输入新一期，例：314期 24 39 21 27 35 06 T 44"
@@ -673,6 +680,101 @@ function addOneDraw(){
   setData(draws);                 // 内部会保存到本机浏览器
   box.value = "";
   alert("已保存第 " + one.issue + " 期（特码 " + pad2(one.special) + "），下次打开还在。");
+}
+
+// 🩺 数据体检：期号跳号 / 号码越界重复 / 生肖标注一致性 / 换肖段异常
+const ZC_ORDER = ["马","蛇","龙","兔","虎","牛","鼠","猪","狗","鸡","猴","羊"];
+function expectedZodiac(n, yearZ){
+  const base = ZC_ORDER.indexOf(yearZ);
+  if(base < 0) return "";
+  return ZC_ORDER[(base + (n - 1) % 12) % 12];
+}
+
+function healthCheck(){
+  const box = document.getElementById("health-out");
+  if(!box) return;
+  if(!draws.length){ alert("请先加载历史数据"); return; }
+  const issues = [];
+  let segCount = 0, gapCount = 0, spBad = 0, nBad = 0, dupBad = 0, zChecked = 0, zBad = 0;
+
+  // 1) 期号连续性（同一年段内应 +1）
+  let i = 0;
+  while(i < draws.length){
+    let j = i;
+    const key0 = (draws[i].year||"") + "|" + (draws[i].yearZodiac||"");
+    while(j + 1 < draws.length && ((draws[j+1].year||"") + "|" + (draws[j+1].yearZodiac||"")) === key0) j++;
+    segCount++;
+    let resetSeen = false;
+    for(let k = i; k < j; k++){
+      const a = parseInt(draws[k].issue), b = parseInt(draws[k+1].issue);
+      if(b === a + 1) continue;
+      // 公历跨年时正常会回到 001 期，一个生肖年内只允许出现一次
+      if(b === 1 && !resetSeen){ resetSeen = true; continue; }
+      gapCount++;
+      if(issues.length < 60) issues.push("期号不连续：" + key0.replace("|","年 ") + " —— " + draws[k].issue + "期 后面直接是 " + draws[k+1].issue + "期");
+    }
+    i = j + 1;
+  }
+
+  // 2) 特码 / 平码 合法性
+  draws.forEach((d) => {
+    const sp = d.special;
+    if(!(sp >= 1 && sp <= 49) || sp !== Math.floor(sp)){
+      spBad++;
+      if(issues.length < 60) issues.push("特码越界：" + d.issue + "期 特码 " + sp);
+    }
+    if(!d.normals || d.normals.length !== 6){
+      nBad++;
+      if(issues.length < 60) issues.push("平码数量不是6个：" + d.issue + "期 只有 " + ((d.normals&&d.normals.length)||0) + " 个");
+    } else {
+      const all = d.normals.concat([sp]);
+      const bad = all.some(x => !(x >= 1 && x <= 49));
+      const dup = new Set(all).size !== all.length;
+      if(bad || dup){
+        dupBad++;
+        if(issues.length < 60) issues.push((bad ? "号码超出1-49：" : "号码有重复：") + d.issue + "期 " + all.join(" "));
+      }
+    }
+  });
+
+  // 3) 生肖括号标注 vs 当年生肖
+  draws.forEach((d) => {
+    if(!d.specialZodiac || !d.yearZodiac) return;
+    zChecked++;
+    const exp = expectedZodiac(d.special, d.yearZodiac);
+    if(exp && exp !== d.specialZodiac){
+      zBad++;
+      if(issues.length < 60) issues.push("生肖标注不符：" + d.issue + "期 特码 " + pad2(d.special) + " 标的是（" + d.specialZodiac + "），按 " + d.yearZodiac + "年 应为（" + exp + "）");
+    }
+  });
+
+  // 4) 换肖段：年份是否重复
+  const segs = collectYearSegments();
+  const yearMap = {};
+  segs.forEach(s => { yearMap[s.year] = (yearMap[s.year]||0) + 1; });
+  const dupYears = Object.entries(yearMap).filter(([y,c]) => c > 1);
+  dupYears.forEach(([y,c]) => {
+    if(issues.length < 60) issues.push("换肖段异常：" + y + "年 出现了 " + c + " 段（正常每年1段）");
+  });
+
+  const total = gapCount + spBad + nBad + dupBad + zBad + dupYears.length;
+  box.style.display = "block";
+  box.innerHTML =
+    '<div style="font-weight:600;margin-bottom:8px;">🩺 数据体检报告（共 ' + draws.length + ' 期，' + segCount + ' 个换肖段）</div>' +
+    '<div style="line-height:1.9;font-size:13px;">' +
+    (total === 0
+      ? '<b style="color:#16a34a;">✅ 全部通过：期号连续、号码合法不重复、生肖标注与当年生肖一致</b>'
+      : '<b style="color:#dc2626;">❌ 共发现 ' + total + ' 处问题</b>') + '<br>' +
+    '· 期号连续性：' + segCount + ' 段中 ' + (gapCount ? '<b style="color:#dc2626;">' + gapCount + ' 处跳号/重号</b>' : '✅ 无跳号') + '<br>' +
+    '· 特码范围(1-49)：' + (spBad ? '<b style="color:#dc2626;">' + spBad + ' 期异常</b>' : '✅ 全部正常') + '<br>' +
+    '· 平码：数量异常 ' + (nBad ? '<b style="color:#dc2626;">' + nBad + ' 期</b>' : '0 期') + '，越界或重复 ' + (dupBad ? '<b style="color:#dc2626;">' + dupBad + ' 期</b>' : '0 期') + '<br>' +
+    '· 生肖括号标注：核对 ' + zChecked + ' 期，' + (zBad ? '<b style="color:#dc2626;">不符 ' + zBad + ' 期</b>' : '✅ 全部一致') + '<br>' +
+    '· 换肖段：共 ' + segs.length + ' 段，' + (dupYears.length ? '<b style="color:#dc2626;">年份重复 ' + dupYears.length + ' 处</b>' : '✅ 每年仅1段') +
+    '</div>' +
+    (issues.length
+      ? '<div style="margin-top:10px;font-size:12px;line-height:1.8;color:#b91c1c;white-space:pre-wrap;">明细（最多列60条）：\n' + issues.join("\n") + '</div>'
+      : '');
+  box.scrollIntoView({behavior:"smooth", block:"start"});
 }
 
 function renderDrawList() {
