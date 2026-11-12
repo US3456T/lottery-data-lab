@@ -528,11 +528,8 @@ function setData(d){
   renderYearIndex();
 }
 
-// 农历换肖一览：哪一期开始换生肖和号码
-function renderYearIndex(){
-  const box = document.getElementById("year-index");
-  if(!box) return;
-  if(!draws.length){ box.style.display = "none"; return; }
+// 汇总每年换肖段：{year, yz, issue}
+function collectYearSegments(){
   const items = []; let prevKey = "";
   draws.forEach((d, i) => {
     let yz = d.yearZodiac || "";
@@ -540,12 +537,63 @@ function renderYearIndex(){
     const key = (d.year || "?") + "-" + yz;
     if(key !== prevKey){ items.push({year: d.year || "", yz: yz || "?", issue: d.issue}); prevKey = key; }
   });
+  return items;
+}
+
+// 给 AI 的换肖规则说明（数据驱动，全部依据历史记录标注）
+function aiRuleContext(){
+  const segs = collectYearSegments();
+  const last = draws.length ? draws[draws.length-1] : null;
+  const lastIdx = draws.length - 1;
+  const lastYz = last ? (last.yearZodiac || "?") : "?";
+  const lastYear = last ? (last.year || "?") : "?";
+  let t = "";
+  t += "【生肖与号码的年份规则（必须遵守，依据历史记录标注）】\n";
+  t += "1. 每一期都属于某一个农历生肖年，号码生肖按该年换算：当年生肖的号码是 01 13 25 37 49；号码每加 1，生肖往前退一位（02 14 26 38 是上一位生肖，03 15 27 39 再往前一位，依此类推，到 49 之后回环）。\n";
+  t += "2. 换肖不以每年 001 期为准，只以历史记录里这句标注所在的期号为准：“农历新年开始，新的生肖，从这期开始 X年X的号码是 01 13 25 37 49”。标注出现在哪一期，就从那一期开始换生肖、换号码。\n";
+  t += "3. 本数据实际换肖期（按记录标注逐年列出）：\n";
+  segs.forEach(s => {
+    t += "   " + (s.year ? s.year + "年" : "") + " " + s.yz + "年 —— 从 " + s.issue + "期 起换，" + s.yz + "的号码是 01 13 25 37 49\n";
+  });
+  t += "4. 每一期特码生肖以记录里 “T 码（生肖）” 括号内的标注为准，不要用号码反推；平码生肖按第 1 条规则按当年生肖换算。\n";
+  if(last){
+    t += "5. 当前数据最新一期：" + last.issue + "期，特码 " + pad2(last.special) + "（" + drawZodiac(last, lastIdx) + "），属 " + lastYear + "年 " + lastYz + "年，该年号码 01 13 25 37 49 起算。\n";
+  }
+  t += "6. 判断某一期属于哪一年、哪个生肖时，按第 3 条的期号分界查，不要按公历 1 月 1 日或 001 期推算。";
+  return t;
+}
+
+function copyAiRule(){
+  const txt = aiRuleContext();
+  const done = () => alert("已复制「生肖换肖规则」，可以直接粘贴给任何 AI 使用");
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done).catch(()=>fallbackCopy(txt, done));
+  } else fallbackCopy(txt, done);
+}
+function fallbackCopy(txt, done){
+  const ta = document.createElement("textarea");
+  ta.value = txt; document.body.appendChild(ta); ta.select();
+  try{ document.execCommand("copy"); }catch(e){}
+  document.body.removeChild(ta); done();
+}
+
+// 农历换肖一览：哪一期开始换生肖和号码
+function renderYearIndex(){
+  const box = document.getElementById("year-index");
+  if(!box) return;
+  if(!draws.length){ box.style.display = "none"; return; }
+  const items = collectYearSegments();
   let html = '<div style="font-weight:600;margin-bottom:6px;">📅 农历换肖一览（过年那期开始换生肖和号码）</div>';
   items.forEach((it, k) => {
     html += "<div style='padding:4px 0;border-bottom:1px dashed var(--border);'>" +
       "<b>" + (it.year ? it.year + "年" : "第" + (k+1) + "段") + "</b> 农历新年开始 · 从 <b style='color:#ef4444;'>" + it.issue + "期</b> 起换 " + it.yz + "年 · " +
       it.yz + "的号码是 01 13 25 37 49" + "</div>";
   });
+  html += "<div style='margin-top:10px;padding:8px;background:rgba(239,68,68,.06);border:1px dashed #ef4444;border-radius:6px;'>" +
+    "<div style='font-weight:600;margin-bottom:6px;'>🤖 AI 判定依据（每次分析都会带上这段给 AI）</div>" +
+    "<pre style='white-space:pre-wrap;font-size:12px;line-height:1.6;margin:0;max-height:220px;overflow:auto;'>" +
+    aiRuleContext().replace(/</g,"&lt;") + "</pre>" +
+    "<button onclick='copyAiRule()' style='margin-top:8px;padding:6px 12px;border:1px solid #ef4444;background:#fff;color:#ef4444;border-radius:6px;cursor:pointer;font-size:12px;'>📋 复制这段规则（可直接贴给其他 AI）</button></div>";
   box.innerHTML = html;
   box.style.display = "block";
 }
@@ -718,6 +766,8 @@ function genReport(){
   document.getElementById("report-out").textContent=
 `📊 智能预测报告（基于 ${r.total} 期全量数据）
 
+${aiRuleContext()}
+
 一、生肖预测（近30期热度优先）
 10肖：${r.zs.slice(0,10).join(" ")}
 9肖：${r.zs.slice(0,9).join(" ")}
@@ -756,6 +806,8 @@ function genDiag(){
   const big=draws.filter(d=>d.special>=25).length, small=draws.length-big;
   document.getElementById("diag-out").textContent=
 `📌 数据概览：共 ${draws.length} 期
+
+${aiRuleContext()}
 
 🔥 近${n}期最热12码：
 ${hc.hot.map(h=>`${pad2(h.number)}(${h.zodiac})x${h.countRecent}`).join("  ")}
@@ -860,6 +912,8 @@ function askAll(){
   let report = "📊 历史数据全量分析报告\n";
   report += "=".repeat(50) + "\n\n";
   report += "📈 统计周期：共 " + draws.length + " 期\n\n";
+  report += aiRuleContext() + "\n\n";
+  report += "=".repeat(50) + "\n\n";
 
   // 一、生肖预测（热门 → 冷）
   report += "【生肖预测】\n";
