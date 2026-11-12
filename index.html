@@ -1140,7 +1140,7 @@ function drawTextBlock(d, idx, yz){
   var L = [];
   L.push("号码： " + n7.slice(0,6).map(p2).join(" ") + " ｜ 特码 " + p2(d.special));
   L.push("生肖： " + zs.slice(0,6).join(" ") + " ｜ " + zs[6]);
-  L.push("波色： " + cs.slice(0,6).join(" ") + " ｜ " + cs[6] + "（红/蓝/绿）");
+  L.push("波色： " + cs.slice(0,6).join(" ") + " ｜ " + cs[6]);
   L.push("尾数： " + n7.slice(0,6).map(function(n){ return String(n % 10); }).join(" ") + " ｜ " + (d.special % 10));
   L.push("头数： " + n7.slice(0,6).map(function(n){ return String(Math.floor(n / 10)); }).join(" ") + " ｜ " + Math.floor(d.special / 10));
   L.push("合数： " + n7.slice(0,6).map(function(n){ return String(Math.floor(n / 10) + n % 10); }).join(" ") + " ｜ " + (Math.floor(d.special / 10) + d.special % 10));
