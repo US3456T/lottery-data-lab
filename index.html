@@ -277,13 +277,14 @@ function parseTxt(text) {
   const lines = text.split(/\r?\n/); const result = [];
   for (const line of lines) {
     // 匹配：001期 24 39 21 27 35 06 T 44（猴）
-    const m = line.match(/(\d+)期\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+T\s+(\d+)/);
+    const m = line.match(/(\d+)期\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+T\s+(\d+)\s*[（(]?\s*([鼠牛虎兔龙蛇马羊猴鸡狗猪])?\s*[）)]?/);
     if (m) {
       result.push({
         issue: m[1],
         date: "",
         normals: [+m[2], +m[3], +m[4], +m[5], +m[6], +m[7]],
-        special: +m[8]
+        special: +m[8],
+        specialZodiac: m[9] || ""
       });
     }
   }
@@ -392,6 +393,12 @@ function setData(d){
   renderLatest();
 }
 
+// 特码生肖：历史记录里写了就照记录，没写才按号码推算
+function drawZodiac(d, idx){
+  if(d && d.specialZodiac) return d.specialZodiac;
+  return zodiacOf(d.special, idx);
+}
+
 // 显示最新一期：号码球 + 生肖 + 属性标签
 function renderLatest(){
   const bodies = [document.getElementById("latest-body"), document.getElementById("latest-body2")].filter(Boolean);
@@ -403,7 +410,7 @@ function renderLatest(){
   }
   const lastIdx = draws.length - 1;
   const d = draws[lastIdx];
-  const z = zodiacOf(d.special, lastIdx);
+  const z = drawZodiac(d, lastIdx);
   const tail = d.special % 10;
   const head = Math.floor(d.special / 10);
   let html = "";
@@ -425,7 +432,7 @@ function fillTriggerFromLatest(){
   if(!el || triggerManual || !draws.length) return;
   const lastIdx = draws.length - 1;
   const d = draws[lastIdx];
-  el.value = pad2(d.special) + " " + zodiacOf(d.special, lastIdx);
+  el.value = pad2(d.special) + " " + drawZodiac(d, lastIdx);
 }
 
 // 新增一期，直接追加并记住
@@ -490,7 +497,7 @@ function renderDrawList() {
       html += ball(n, z, false);
     });
     html += '<div style="display:flex;align-items:center;font-size:19px;font-weight:700;color:#f9a825;margin:0 6px;white-space:nowrap;">= 特码T码 =</div>';
-    const sz = zodiacOf(d.special, idx);
+    const sz = drawZodiac(d, idx);
     html += ball(d.special, sz, true);
     html += '<div style="display:flex;align-items:center;margin-left:6px;white-space:nowrap;font-size:11px;gap:3px;">' + zodiacPropsHtml(sz) + '</div>';
     const size = d.special >= 25 ? "大" : "小";
