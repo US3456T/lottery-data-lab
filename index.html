@@ -810,10 +810,12 @@ function genDiag(){
 ${aiRuleContext()}
 
 🔥 近${n}期最热12码：
-${hc.hot.map(h=>`${pad2(h.number)}(${h.zodiac})x${h.countRecent}`).join("  ")}
+${hc.hot.map(h=>pad2(h.number)).join("  ")}
+${hc.hot.map(h=>h.zodiac).join("  ")}
 
 ❄️ 近${n}期最冷12码：
-${hc.cold.map(h=>`${pad2(h.number)}(${h.zodiac})x${h.countRecent}`).join("  ")}
+${hc.cold.map(h=>pad2(h.number)).join("  ")}
+${hc.cold.map(h=>h.zodiac).join("  ")}
 
 🎴 特码生肖频次（全量）：
 ${Object.entries(fz).map(([z,c])=>`${z}:${c}`).join("  ")}
@@ -838,7 +840,8 @@ function genTrigger(){
 历史共触发 ${r.triggerCount} 次
 
 📈 下一期特码 TOP 12：
-${r.nextTop.slice(0,12).map(x=>`${pad2(x.number)}(${x.zodiac})x${x.count}`).join("  ")}
+${r.nextTop.slice(0,12).map(x=>pad2(x.number)).join("  ")}
+${r.nextTop.slice(0,12).map(x=>x.zodiac).join("  ")}
 
 📋 下一期特码完整序列：
 ${r.nextList.join(", ")}`;
