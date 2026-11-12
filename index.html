@@ -1295,8 +1295,63 @@ function arenaBuildPre(){
   return pre;
 }
 
-function arenaPick(arr, n, desc){
-  var used = new Uint8Array(50), res = [];
+// ===== 真·神经网络（在浏览器里现场训练：每期反向传播、在线学习）=====
+var NN_H = 16, NN_L = 6, NN_D = NN_L * 49 + 1, NN_OUT = 49;
+function nnInit(rng){
+  var W1 = new Float64Array(NN_D * NN_H), b1 = new Float64Array(NN_H), W2 = new Float64Array(NN_H * NN_OUT), b2 = new Float64Array(NN_OUT);
+  for (var i = 0; i < W1.length; i++) W1[i] = (rng() - 0.5) * 0.04;
+  for (var j = 0; j < W2.length; j++) W2[j] = (rng() - 0.5) * 0.04;
+  return { W1: W1, b1: b1, W2: W2, b2: b2, lr: 0.06, n: 0 };
+}
+function nnForward(m, x, hOut, pOut){
+  var j, k, s;
+  for (j = 0; j < NN_H; j++){
+    s = m.b1[j];
+    for (k = 0; k < NN_D; k++){ if (x[k]) s += x[k] * m.W1[k * NN_H + j]; }
+    hOut[j] = s > 0 ? s : 0;
+  }
+  var maxz = -1e9;
+  for (k = 0; k < NN_OUT; k++){
+    s = m.b2[k];
+    for (j = 0; j < NN_H; j++) s += hOut[j] * m.W2[j * NN_OUT + k];
+    pOut[k] = s;
+    if (s > maxz) maxz = s;
+  }
+  var sum = 0;
+  for (k = 0; k < NN_OUT; k++){ pOut[k] = Math.exp(pOut[k] - maxz); sum += pOut[k]; }
+  for (k = 0; k < NN_OUT; k++) pOut[k] /= sum;
+}
+function nnTrain(m, x, hOut, pOut, truth){
+  var dz = pOut.slice(0);
+  dz[truth - 1] -= 1;
+  var dh = new Float64Array(NN_H), j, k, s, ix;
+  for (j = 0; j < NN_H; j++){
+    s = 0;
+    for (k = 0; k < NN_OUT; k++) s += m.W2[j * NN_OUT + k] * dz[k];
+    dh[j] = hOut[j] > 0 ? s : 0;
+  }
+  for (j = 0; j < NN_H; j++){
+    for (k = 0; k < NN_OUT; k++) m.W2[j * NN_OUT + k] -= m.lr * hOut[j] * dz[k];
+  }
+  for (k = 0; k < NN_OUT; k++) m.b2[k] -= m.lr * dz[k];
+  for (ix = 0; ix < NN_D; ix++){
+    if (!x[ix]) continue;
+    for (j = 0; j < NN_H; j++) m.W1[ix * NN_H + j] -= m.lr * dh[j];
+  }
+  for (j = 0; j < NN_H; j++) m.b1[j] -= m.lr * dh[j];
+  m.n++;
+  if (m.n > 40 && m.lr > 0.01) m.lr *= 0.996;
+}
+function nnEncode(x, arr, i){
+  x.fill(0);
+  for (var j = 0; j < NN_L; j++){
+    var v = arr[i - 1 - j];
+    if (v >= 1 && v <= 49) x[j * 49 + (v - 1)] = 1;
+  }
+  x[NN_D - 1] = 1;
+}
+
+function arenaPick(arr, n, desc){  var used = new Uint8Array(50), res = [];
   var cnt = Math.min(n, 49);
   for (var t = 0; t < cnt; t++){
     var bk = 0, bv = null;
@@ -1318,8 +1373,20 @@ function arenaTrial(seed, span){
   var start = 55 + Math.floor(rng() * Math.max(1, n - span - 60));
   var end = Math.min(n, start + span);
 
-  var names = ["热号(近50)","冷号(近50)","遗漏回补","马尔可夫","尾数热","综合评分","自我学习","随机基线"];
+  var names = ["🧠 神经网络(自学习)","热号(近50)","冷号(近50)","遗漏回补","马尔可夫","尾数热","综合评分","自我学习","随机基线"];
   var hit = {}; names.forEach(function(nm){ hit[nm] = {t1:0,t6:0,t18:0}; });
+
+  // 神经网络：先用窗口前的 200 期热启动（边学边判），之后继续在线学习
+  var nn = nnInit(rng), nnH = new Float64Array(NN_H), nnP = new Float64Array(NN_OUT), nnX = new Float64Array(NN_D);
+  if (!ARENA.sp || ARENA.sp.length !== draws.length) ARENA.sp = draws.map(function(d){ return d.special; });
+  var SP = ARENA.sp;
+  var warm = Math.max(60, Math.min(300, start - 10));
+  for (var wi = start - warm; wi < start; wi++){
+    nnEncode(nnX, SP, wi);
+    nnForward(nn, nnX, nnH, nnP);
+    nnTrain(nn, nnX, nnH, nnP, SP[wi]);
+  }
+  var nnArr = new Int32Array(50);
 
   // 自我学习：49 个号码各带一份权重，每期按“是否命中”做乘性更新
   var w = new Float64Array(50).fill(1);
@@ -1338,6 +1405,13 @@ function arenaTrial(seed, span){
       comp[k] = c * 10 + Math.min(gap[k], 120);
     }
     var preds = {};
+    // 神经网络输出：按概率从高到低取前 18 码
+    nnEncode(nnX, SP, i);
+    nnForward(nn, nnX, nnH, nnP);
+    for (var q3 = 1; q3 <= 49; q3++) nnArr[q3] = 0;
+    for (var q4 = 1; q4 <= 49; q4++) nnArr[q4] = Math.round(nnP[q4 - 1] * 1e6);
+    preds["🧠 神经网络(自学习)"] = arenaPick(nnArr, 18, true);
+
     preds["热号(近50)"] = arenaPick(heat, 18, true);
     preds["冷号(近50)"] = arenaPick(heat, 18, false);
     preds["遗漏回补"] = arenaPick(gap, 18, true);
@@ -1375,6 +1449,9 @@ function arenaTrial(seed, span){
       if (pos >= 0) hit[nm].t18++;
     }
 
+    // 神经网络：判完这一期后用真实结果继续训练（在线学习，永不停止）
+    nnTrain(nn, nnX, nnH, nnP, truth);
+
     // 学习更新：命中→权重增大，未命中→略微降低（保持总量归一）
     var sum = 0;
     for (var k5 = 1; k5 <= 49; k5++){
@@ -1398,9 +1475,10 @@ function arenaStart(){
   if (ARENA.span > draws.length - 70) ARENA.span = Math.max(200, draws.length - 70);
   ARENA.running = true; ARENA.total = 0; ARENA.round = 0; ARENA.seed = 1;
   ARENA.agg = {};
-  ["热号(近50)","冷号(近50)","遗漏回补","马尔可夫","尾数热","综合评分","自我学习","随机基线"].forEach(function(nm){
+  ["🧠 神经网络(自学习)","热号(近50)","冷号(近50)","遗漏回补","马尔可夫","尾数热","综合评分","自我学习","随机基线"].forEach(function(nm){
     ARENA.agg[nm] = {t1:0,t6:0,t18:0};
   });
+  ARENA.sp = null;
   ARENA.pre = null; ARENA.preN = -1;
   arenaBuildPre();
   arenaTick();
