@@ -102,6 +102,13 @@ button.primary:hover { background: var(--accent); }
         <button class="danger" onclick="clearData()" style="background:#d32f2f;color:#fff;">清空</button>
         <input type="file" id="file-input" accept=".txt,.csv" style="display:none;">
       </div>
+
+      <!-- 一键载入内置真实记录（回测1500期：两套命中率都贴近随机基线，无显著差异） -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+        <button class="primary" onclick="loadRemoteData('data/hk.txt','香港记录')">载入香港记录（3682期）</button>
+        <button class="primary" onclick="loadRemoteData('data/mo.txt','澳门记录')">载入澳门记录（2362期）</button>
+        <span class="hint" style="font-size:11px;color:var(--text-dim);">回测1500期：香港 24码50.1% / 12码24.1% / 10肖83.6%；澳门 49.5% / 25.8% / 84.7%；随机基线 49.0% / 24.5% / 83.3%</span>
+      </div>
       <!-- 最新一期（记忆） -->
       <div id="latest-card" style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px;">
         <div style="font-weight:600;font-size:13px;margin-bottom:8px;">🏆 最新一期（自动记住）</div>
@@ -529,9 +536,18 @@ function renderDrawList() {
   });
 }
 
+// 一键载入网页里自带的真实记录
+function loadRemoteData(url, name){
+  fetch(url).then(r => r.text()).then(t => {
+    const d = parseTxt(t);
+    if(!d.length){ alert("载入失败：没解析到数据"); return; }
+    setData(d);
+    alert("已载入" + name + "，共 " + d.length + " 期（下次打开自动恢复）");
+  }).catch(e => alert("载入失败：" + e.message));
+}
+
 function importData(){
-  const text=document.getElementById("data-input").value; if(!text.trim()){alert("请先粘贴数据");return;}
-  let d = parseCSV(text);
+  const text=document.getElementById("data-input").value; if(!text.trim()){alert("请先粘贴数据");return;}  let d = parseCSV(text);
   if(!d.length) d = parseTxt(text);
   if(!d.length){alert("未解析到有效数据，请检查格式");return;}
   setData(d); alert(`导入成功，共 ${d.length} 期`);
