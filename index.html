@@ -197,7 +197,10 @@ button.primary:hover { background: var(--accent); }
         <button onclick="arenaSave()">💾 导出结果</button>
       </div>
       <div class="row">
-        <span class="hint">规则：每轮从历史里随机截一段连续 1500 期，只用当期之前的数据预测当期，命中即算分。轮次越多越稳，可以放到几百轮慢慢跑。</span>
+        <span class="hint">规则：每轮从历史里随机截一段连续 N 期，只用当期之前的数据预测当期，命中即算分。轮次越多越稳，可以放到几百轮慢慢跑。</span>
+      </div>
+      <div class="row">
+        <span class="hint">场上 12 个引擎：🧠 神经网络(MLP)　🔁 循环网络(RNN)　🧭 KNN相似期　🎯 Q学习强化　📊 贝叶斯在线　🧬 遗传算法　⚖️ 集成堆叠｜对照：马尔可夫1/2阶、热号、遗漏回补、随机基线。带图标的六个都是每期自己调权重、会持续学习的模型，预测完立刻用真结果训练一次。</span>
       </div>
       <div id="arena-progress" style="font-size:12px;color:var(--accent);padding:4px 0;"></div>
       <div id="arena-out" class="report"></div>
@@ -1334,6 +1337,10 @@ function arenaBuildPre(){
 
 // ===== 真·神经网络（在浏览器里现场训练：每期反向传播、在线学习）=====
 var NN_H = 16, NN_L = 6, NN_D = NN_L * 49 + 1, NN_OUT = 49;
+
+// 竞技场里的 11 个引擎（全部只用当期之前的数据，边学边判）
+var AR_H = 12;
+var ARENA_NAMES = ["🧠 神经网络(MLP)","🔁 循环网络(RNN)","🧭 KNN相似期","🎯 Q学习强化","📊 贝叶斯在线","🧬 遗传算法","⚖️ 集成堆叠","马尔可夫1阶","马尔可夫2阶","热号(近50)","遗漏回补","随机基线"];
 function nnInit(rng){
   var W1 = new Float64Array(NN_D * NN_H), b1 = new Float64Array(NN_H), W2 = new Float64Array(NN_H * NN_OUT), b2 = new Float64Array(NN_OUT);
   for (var i = 0; i < W1.length; i++) W1[i] = (rng() - 0.5) * 0.04;
@@ -1409,95 +1416,222 @@ function arenaTrial(seed, span){
   var n = draws.length, pre = arenaBuildPre();
   var start = 55 + Math.floor(rng() * Math.max(1, n - span - 60));
   var end = Math.min(n, start + span);
-
-  var names = ["🧠 神经网络(自学习)","热号(近50)","冷号(近50)","遗漏回补","马尔可夫","尾数热","综合评分","自我学习","随机基线"];
-  var hit = {}; names.forEach(function(nm){ hit[nm] = {t1:0,t6:0,t18:0}; });
-
-  // 神经网络：先用窗口前的 200 期热启动（边学边判），之后继续在线学习
-  var nn = nnInit(rng), nnH = new Float64Array(NN_H), nnP = new Float64Array(NN_OUT), nnX = new Float64Array(NN_D);
   if (!ARENA.sp || ARENA.sp.length !== draws.length) ARENA.sp = draws.map(function(d){ return d.special; });
   var SP = ARENA.sp;
+
+  var names = ARENA_NAMES;
+  var hit = {}; names.forEach(function(nm){ hit[nm] = {t1:0,t6:0,t18:0}; });
+
+  // ---- 各引擎状态 ----
+  // 1) 神经网络（在线反向传播）
+  var nn = nnInit(rng), H = new Float64Array(NN_H), P = new Float64Array(NN_OUT), X = new Float64Array(NN_D), tmp = new Int32Array(50);
   var warm = Math.max(60, Math.min(300, start - 10));
   for (var wi = start - warm; wi < start; wi++){
-    nnEncode(nnX, SP, wi);
-    nnForward(nn, nnX, nnH, nnP);
-    nnTrain(nn, nnX, nnH, nnP, SP[wi]);
+    nnEncode(X, SP, wi); nnForward(nn, X, H, P); nnTrain(nn, X, H, P, SP[wi]);
   }
-  var nnArr = new Int32Array(50);
+  // 2) 循环网络：把最近 6 期的 one-hot 当成序列喂进去
+  var Wx = new Float64Array(49 * AR_H), Wh = new Float64Array(AR_H * AR_H), Wo = new Float64Array(AR_H * 49);
+  var bh = new Float64Array(AR_H), bo = new Float64Array(49), hs = new Float64Array(AR_H), hprev = new Float64Array(AR_H);
+  var xin = new Float64Array(49), dzr = new Float64Array(49), dhr = new Float64Array(AR_H);
+  var lrr = 0.05;
+  for (var q1 = 0; q1 < Wx.length; q1++) Wx[q1] = (rng() - 0.5) * 0.1;
+  for (var q2 = 0; q2 < Wh.length; q2++) Wh[q2] = (rng() - 0.5) * 0.16;
+  for (var q3 = 0; q3 < Wo.length; q3++) Wo[q3] = (rng() - 0.5) * 0.1;
+  function rnnStep(prevNum, outP){
+    for (var a1 = 0; a1 < 49; a1++) xin[a1] = (prevNum > 0 && a1 === prevNum - 1) ? 1 : 0;
+    for (var a2 = 0; a2 < AR_H; a2++) hprev[a2] = hs[a2];
+    for (var a3 = 0; a3 < AR_H; a3++){
+      var s1 = bh[a3];
+      for (var a4 = 0; a4 < 49; a4++) if (xin[a4]) s1 += Wx[a4 * AR_H + a3];
+      for (var a5 = 0; a5 < AR_H; a5++) s1 += hprev[a5] * Wh[a5 * AR_H + a3];
+      hs[a3] = Math.tanh(s1);
+    }
+    var mx = -1e9;
+    for (var a6 = 0; a6 < 49; a6++){
+      var s2 = bo[a6];
+      for (var a7 = 0; a7 < AR_H; a7++) s2 += hs[a7] * Wo[a7 * 49 + a6];
+      outP[a6] = s2; if (s2 > mx) mx = s2;
+    }
+    var sum = 0;
+    for (var a8 = 0; a8 < 49; a8++){ outP[a8] = Math.exp(outP[a8] - mx); sum += outP[a8]; }
+    for (var a9 = 0; a9 < 49; a9++) outP[a9] /= sum;
+  }
+  function rnnTrain(truth, outP){
+    for (var b1 = 0; b1 < 49; b1++) dzr[b1] = outP[b1];
+    dzr[truth - 1] -= 1;
+    for (var b2 = 0; b2 < 49; b2++){
+      for (var b3 = 0; b3 < AR_H; b3++) Wo[b3 * 49 + b2] -= lrr * hs[b3] * dzr[b2];
+      bo[b2] -= lrr * dzr[b2];
+    }
+    for (var b4 = 0; b4 < AR_H; b4++){
+      var g = 0;
+      for (var b5 = 0; b5 < 49; b5++) g += Wo[b4 * 49 + b5] * dzr[b5];
+      dhr[b4] = g * (1 - hs[b4] * hs[b4]);
+    }
+    for (var b6 = 0; b6 < AR_H; b6++){
+      for (var b7 = 0; b7 < AR_H; b7++) Wh[b7 * AR_H + b6] -= lrr * hprev[b7] * dhr[b6];
+      for (var b8 = 0; b8 < 49; b8++) if (xin[b8]) Wx[b8 * AR_H + b6] -= lrr * dhr[b6];
+      bh[b6] -= lrr * dhr[b6];
+    }
+  }
+  // 3) KNN：找历史上最像的几个片段
+  // 4) Q 学习：状态=上期特码落在哪一段，动作=号码
+  var Q = new Float64Array(12 * 49), qSlot = 0, qPrevSlot = -1, qPrevAct = -1;
+  // 5) 贝叶斯在线：每个号码的后验概率
+  var al = new Float64Array(49), be = new Float64Array(49);
+  for (var q9 = 0; q9 < 49; q9++){ al[q9] = 1; be[q9] = 1; }
+  // 6) 遗传算法：24 组权重，每 40 期进化一次
+  var GA_P = 24, gw = [], fit = new Float64Array(GA_P);
+  for (var g1 = 0; g1 < GA_P; g1++){ var wv = new Float64Array(49); for (var g2 = 0; g2 < 49; g2++) wv[g2] = 1 + (rng() - 0.5) * 0.6; gw.push(wv); }
+  // 7) 集成：按各引擎近 200 期命中率自适应加权
+  var parts = ["🧠 神经网络(MLP)", "🔁 循环网络(RNN)", "🧭 KNN相似期", "🎯 Q学习强化", "📊 贝叶斯在线"];
+  var pw = {}; parts.forEach(function(k){ pw[k] = 1 / parts.length; });
+  var phit = {}, pn = {}; parts.forEach(function(k){ phit[k] = 1; pn[k] = 2; });
 
-  // 自我学习：49 个号码各带一份权重，每期按“是否命中”做乘性更新
-  var w = new Float64Array(50).fill(1);
-  var seen = new Int32Array(50).fill(-1);   // 每个号码最近一次出现的位置
-  var j;
-  for (j = Math.max(0, start - 400); j < start; j++) seen[draws[j].special] = j;
+  var seen = new Int32Array(50).fill(-1), j0;
+  for (j0 = Math.max(0, start - 400); j0 < start; j0++) seen[SP[j0]] = j0;
 
   for (var i = start; i < end; i++){
-    var truth = draws[i].special;
-    var lo50 = Math.max(0, i - 50), lo100 = Math.max(0, i - 100), lo300 = Math.max(1, i - 300);
-    var heat = new Int32Array(50), gap = new Int32Array(50), comp = new Int32Array(50);
+    var truth = SP[i], preds = {};
+
+    // 热号 / 遗漏（保留两个便宜的统计对照）
+    var heat = new Int32Array(50), gapA = new Int32Array(50), compA = new Int32Array(50);
     for (var k = 1; k <= 49; k++){
-      var c = pre[i][k] - pre[lo50][k];
-      heat[k] = c;
-      gap[k] = (seen[k] < 0) ? 400 : (i - seen[k]);
-      comp[k] = c * 10 + Math.min(gap[k], 120);
+      heat[k] = pre[i][k] - pre[Math.max(0, i - 50)][k];
+      gapA[k] = (seen[k] < 0) ? 400 : (i - seen[k]);
+      compA[k] = heat[k] * 10 + Math.min(gapA[k], 120);
     }
-    var preds = {};
-    // 神经网络输出：按概率从高到低取前 18 码
-    nnEncode(nnX, SP, i);
-    nnForward(nn, nnX, nnH, nnP);
-    for (var q3 = 1; q3 <= 49; q3++) nnArr[q3] = 0;
-    for (var q4 = 1; q4 <= 49; q4++) nnArr[q4] = Math.round(nnP[q4 - 1] * 1e6);
-    preds["🧠 神经网络(自学习)"] = arenaPick(nnArr, 18, true);
-
     preds["热号(近50)"] = arenaPick(heat, 18, true);
-    preds["冷号(近50)"] = arenaPick(heat, 18, false);
-    preds["遗漏回补"] = arenaPick(gap, 18, true);
-    preds["综合评分"] = arenaPick(comp, 18, true);
+    preds["遗漏回补"] = arenaPick(gapA, 18, true);
 
-    // 马尔可夫：上期特码 → 历史后继
-    var prev = draws[i-1].special, tran = new Int32Array(50), any = false;
-    for (var t2 = i - 1; t2 >= lo300; t2--){
-      if (draws[t2-1] && draws[t2-1].special === prev){ tran[draws[t2].special] += 1; any = true; }
+    // 马尔可夫 1 阶 / 2 阶
+    var m1 = new Int32Array(50), m2 = new Int32Array(50);
+    var p1 = i > 0 ? SP[i-1] : 0, p2 = i > 1 ? SP[i-2] : 0;
+    for (var t1 = Math.max(1, i - 300); t1 < i; t1++){
+      if (SP[t1-1] === p1) m1[SP[t1]] += 1;
+      if (t1 >= 2 && SP[t1-2] === p2 && SP[t1-1] === p1) m2[SP[t1]] += 1;
     }
-    preds["马尔可夫"] = any ? arenaPick(tran, 18, true) : arenaPick(heat, 18, true);
+    preds["马尔可夫1阶"] = arenaPick(m1, 18, true);
+    preds["马尔可夫2阶"] = arenaPick(m2, 18, true);
 
-    // 尾数热
-    var tail = new Int32Array(10), tl = new Int32Array(50);
-    for (var k2 = 1; k2 <= 49; k2++) tail[k2 % 10] += pre[i][k2] - pre[lo100][k2];
-    for (var k3 = 1; k3 <= 49; k3++) tl[k3] = tail[k3 % 10] * 100 + (pre[i][k3] - pre[lo100][k3]);
-    preds["尾数热"] = arenaPick(tl, 18, true);
+    // 神经网络
+    nnEncode(X, SP, i); nnForward(nn, X, H, P);
+    for (var k2 = 1; k2 <= 49; k2++) tmp[k2] = Math.round(P[k2-1] * 1e6);
+    preds["🧠 神经网络(MLP)"] = arenaPick(tmp, 18, true);
 
-    // 自我学习：权重最高 + 近期热度加成
-    var score = new Int32Array(50);
-    for (var k4 = 1; k4 <= 49; k4++) score[k4] = Math.round(w[k4] * 1000) + heat[k4];
-    preds["自我学习"] = arenaPick(score, 18, true);
+    // 循环网络
+    var pr = new Float64Array(49);
+    rnnStep(i > 0 ? SP[i-1] : 0, pr);
+    for (var k3 = 1; k3 <= 49; k3++) tmp[k3] = Math.round(pr[k3-1] * 1e6);
+    preds["🔁 循环网络(RNN)"] = arenaPick(tmp, 18, true);
+
+    // KNN：最近 6 期作为指纹，找最像的 12 段，看它们下一期开什么
+    var kn = new Int32Array(50);
+    if (i >= 14){
+      var best = [];
+      for (var t2 = 6; t2 < i - 1; t2++){
+        var d = 0;
+        for (var w = 0; w < 6; w++){
+          var da = Math.abs(SP[i-6+w] - SP[t2-6+w]);
+          d += Math.min(da, 49 - da);
+        }
+        best.push([d, t2]);
+      }
+      best.sort(function(x, y){ return x[0] - y[0]; });
+      for (var t3 = 0; t3 < 12 && t3 < best.length; t3++) kn[SP[best[t3][1]]] += 1000 - best[t3][0] * 5;
+    }
+    preds["🧭 KNN相似期"] = arenaPick(kn, 18, true);
+
+    // Q 学习
+    qSlot = (i > 0) ? ((SP[i-1] - 1) >> 2) % 12 : 0;
+    for (var k4 = 1; k4 <= 49; k4++) tmp[k4] = Math.round(Q[qSlot * 49 + (k4 - 1)] * 1000) + heat[k4];
+    var qPool = arenaPick(tmp, 18, true);
+    preds["🎯 Q学习强化"] = qPool;
+
+    // 贝叶斯在线
+    for (var k5 = 1; k5 <= 49; k5++) tmp[k5] = Math.round(al[k5-1] / (al[k5-1] + be[k5-1]) * 1e6);
+    preds["📊 贝叶斯在线"] = arenaPick(tmp, 18, true);
+
+    // 遗传算法（取种群平均分）
+    var gaSc = new Int32Array(50);
+    for (var k6 = 1; k6 <= 49; k6++){
+      var s6 = 0;
+      for (var gp = 0; gp < GA_P; gp++) s6 += gw[gp][k6-1] * (heat[k6] + 0.3) + 0.01 * Math.min(gapA[k6], 200);
+      gaSc[k6] = Math.round(s6 * 100);
+    }
+    var gaPool = arenaPick(gaSc, 18, true);
+    preds["🧬 遗传算法"] = gaPool;
+
+    // 集成：按各引擎历史命中率加权合并
+    var ens = new Int32Array(50);
+    parts.forEach(function(k){
+      var o = preds[k] || [];
+      for (var u = 0; u < o.length; u++) ens[o[u]] += Math.round(pw[k] * 1000 * (18 - u) / 18);
+    });
+    preds["⚖️ 集成堆叠"] = arenaPick(ens, 18, true);
 
     // 随机基线
     var pool = [];
-    for (var q = 1; q <= 49; q++) pool.push(q);
-    for (var q2 = pool.length - 1; q2 > 0; q2--){ var rj = Math.floor(rng() * (q2 + 1)); var tmp = pool[q2]; pool[q2] = pool[rj]; pool[rj] = tmp; }
+    for (var q5 = 1; q5 <= 49; q5++) pool.push(q5);
+    for (var q6 = pool.length - 1; q6 > 0; q6--){ var rj = Math.floor(rng() * (q6 + 1)); var tp = pool[q6]; pool[q6] = pool[rj]; pool[rj] = tp; }
     preds["随机基线"] = pool.slice(0, 18);
 
+    // 记分
     for (var nm in preds){
-      var o = preds[nm];
-      var pos = o.indexOf(truth);
-      if (o[0] === truth) hit[nm].t1++;
+      if (!hit[nm]) continue;
+      var o2 = preds[nm], pos = o2.indexOf(truth);
+      if (o2[0] === truth) hit[nm].t1++;
       if (pos >= 0 && pos < 6) hit[nm].t6++;
       if (pos >= 0) hit[nm].t18++;
     }
 
-    // 神经网络：判完这一期后用真实结果继续训练（在线学习，永不停止）
-    nnTrain(nn, nnX, nnH, nnP, truth);
-
-    // 学习更新：命中→权重增大，未命中→略微降低（保持总量归一）
-    var sum = 0;
-    for (var k5 = 1; k5 <= 49; k5++){
-      w[k5] *= (k5 === truth ? 1.06 : 0.9989);
-      if (w[k5] < 0.2) w[k5] = 0.2;
-      if (w[k5] > 5) w[k5] = 5;
-      sum += w[k5];
+    // ---- 各自学习 ----
+    nnTrain(nn, X, H, P, truth);
+    rnnTrain(truth, pr);
+    if (qPrevSlot >= 0){
+      var curMax = 0;
+      for (var mq = 0; mq < 49; mq++){ var qvv = Q[qSlot * 49 + mq]; if (qvv > curMax) curMax = qvv; }
+      var idxQ = qPrevSlot * 49 + (qPrevAct - 1);
+      var reward = (qPool.indexOf(truth) >= 0 ? 1 : -0.03);
+      Q[idxQ] += 0.05 * (reward + 0.9 * curMax - Q[idxQ]);
     }
-    if (sum > 0) for (var k6 = 1; k6 <= 49; k6++) w[k6] *= 49 / sum;
+    qPrevSlot = qSlot;
+    qPrevAct = qPool[0];
+    al[truth - 1] += 1;
+    for (var b9 = 0; b9 < 49; b9++) be[b9] += 1;
+
+    for (var gp2 = 0; gp2 < GA_P; gp2++){
+      var bestV = -1e9, bestK = 0;
+      for (var k7 = 1; k7 <= 49; k7++){
+        var v7 = gw[gp2][k7-1] * (heat[k7] + 0.3) + 0.01 * Math.min(gapA[k7], 200);
+        if (v7 > bestV){ bestV = v7; bestK = k7; }
+      }
+      fit[gp2] = 0.99 * fit[gp2] + (bestK === truth ? 1 : 0);
+    }
+    if ((i - start) % 40 === 0 && i > start + 40){
+      var order = [];
+      for (var gp3 = 0; gp3 < GA_P; gp3++) order.push([fit[gp3], gp3]);
+      order.sort(function(x, y){ return y[0] - x[0]; });
+      var elite = [], keep = Math.max(2, Math.floor(GA_P / 4));
+      for (var e1 = 0; e1 < keep; e1++) elite.push(gw[order[e1][1]].slice());
+      while (elite.length < GA_P){
+        var a1 = gw[order[Math.floor(rng() * keep)][1]], b1 = gw[order[Math.floor(rng() * keep)][1]];
+        var child = a1.slice(), cut = 1 + Math.floor(rng() * 47);
+        for (var c1 = cut; c1 < 49; c1++) child[c1] = b1[c1];
+        for (var c2 = 0; c2 < 49; c2++) child[c2] += (rng() - 0.5) * 0.12;
+        elite.push(child);
+      }
+      gw = elite;
+    }
+
+    parts.forEach(function(k){
+      var o3 = preds[k] || [];
+      var ok = o3.indexOf(truth) >= 0 ? 1 : 0;
+      phit[k] += ok; pn[k] += 1;
+      pw[k] = (phit[k] / pn[k]);
+    });
+    var tot = 0; parts.forEach(function(k){ tot += pw[k]; });
+    parts.forEach(function(k){ pw[k] /= tot; });
 
     seen[truth] = i;
   }
@@ -1512,7 +1646,7 @@ function arenaStart(){
   if (ARENA.span > draws.length - 70) ARENA.span = Math.max(200, draws.length - 70);
   ARENA.running = true; ARENA.total = 0; ARENA.round = 0; ARENA.seed = 1;
   ARENA.agg = {};
-  ["🧠 神经网络(自学习)","热号(近50)","冷号(近50)","遗漏回补","马尔可夫","尾数热","综合评分","自我学习","随机基线"].forEach(function(nm){
+  ["🧠 神经网络(MLP)","🔁 循环网络(RNN)","🧭 KNN相似期","🎯 Q学习强化","📊 贝叶斯在线","🧬 遗传算法","⚖️ 集成堆叠","马尔可夫1阶","马尔可夫2阶","热号(近50)","遗漏回补","随机基线"].forEach(function(nm){
     ARENA.agg[nm] = {t1:0,t6:0,t18:0};
   });
   ARENA.sp = null;
