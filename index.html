@@ -92,6 +92,7 @@ button.primary:hover { background: var(--accent); }
       <button class="tab" data-tab="trigger">🎯 触发-滞后</button>
       <button class="tab" data-tab="backtest">🔁 全历史回测</button>
       <button class="tab" data-tab="arena">🧪 AI 竞技评测</button>
+      <button class="tab" data-tab="ledger">🧾 预测流水</button>
       <button class="tab active" data-tab="chat">🤖 AI 对话</button>
     </nav>
 
@@ -199,6 +200,20 @@ button.primary:hover { background: var(--accent); }
       </div>
       <div id="arena-progress" style="font-size:12px;color:var(--accent);padding:4px 0;"></div>
       <div id="arena-out" class="report"></div>
+    </div>
+
+    <div class="tab-pane" id="pane-ledger">
+      <div class="row">
+        <button class="primary" onclick="ledgerRun(true)">立即结算新期</button>
+        <button onclick="ledgerExport()">💾 导出流水</button>
+        <button onclick="ledgerReset()">清空流水（重置模型）</button>
+        <label style="margin-left:8px;font-size:12px;">
+          <input type="checkbox" id="ledger-auto" checked onchange="ledgerAutoToggle()"> 每期自动喂给模型
+        </label>
+      </div>
+      <div class="row"><span class="hint">模型权重存在本机浏览器里，下次打开继续学（不是每次重头开始）。数据里新增一期，它就会自动预测这一期、再把答案学进去，并留一条记录。</span></div>
+      <div id="ledger-stat" class="report" style="padding:8px;"></div>
+      <div id="ledger-table" class="report" style="max-height:340px;overflow:auto;"></div>
     </div>
 
     <div class="tab-pane active" id="pane-chat">
@@ -1543,6 +1558,157 @@ function arenaSave(){
   txt += "\n理论随机值：2.04 / 12.24 / 36.73（%）\n";
   saveTextFile(txt, "AI竞技评测结果_" + Date.now() + ".txt");
 }
+// ===== 预测流水：模型长期记忆 + 每期自动结算 =====
+var LEDGER = { model: null, rows: [], sig: "", busy: false, timer: null };
+
+function nnToJSON(m){
+  return { W1: Array.from(m.W1), b1: Array.from(m.b1), W2: Array.from(m.W2), b2: Array.from(m.b2), lr: m.lr, n: m.n };
+}
+function nnFromJSON(o){
+  if (!o || !o.W1 || o.W1.length !== NN_D * NN_H || !o.W2 || o.W2.length !== NN_H * NN_OUT) return null;
+  return { W1: Float64Array.from(o.W1), b1: Float64Array.from(o.b1), W2: Float64Array.from(o.W2), b2: Float64Array.from(o.b2), lr: o.lr || 0.02, n: o.n || 0 };
+}
+function ledgerLoad(){
+  try {
+    var m = localStorage.getItem("ai_nn_model");
+    if (m) LEDGER.model = nnFromJSON(JSON.parse(m));
+    var r = localStorage.getItem("ai_ledger");
+    if (r) LEDGER.rows = JSON.parse(r) || [];
+    var s = localStorage.getItem("ai_ledger_sig");
+    if (s) LEDGER.sig = s;
+    var ps = localStorage.getItem("ai_ledger_pos");
+    if (ps) LEDGER.pos = JSON.parse(ps);
+  } catch(e) {}
+  if (!LEDGER.model){
+    var seed = 20261112;
+    LEDGER.model = nnInit(function(){ seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; seed = seed >>> 0; return seed / 4294967296; });
+  }
+  if (!Array.isArray(LEDGER.rows)) LEDGER.rows = [];
+}
+function ledgerSave(){
+  try {
+    localStorage.setItem("ai_nn_model", JSON.stringify(nnToJSON(LEDGER.model)));
+    localStorage.setItem("ai_ledger", JSON.stringify(LEDGER.rows.slice(-400)));
+    localStorage.setItem("ai_ledger_sig", LEDGER.sig);
+    localStorage.setItem("ai_ledger_pos", JSON.stringify(LEDGER.pos || {}));
+  } catch(e) {}
+}
+function ledgerRun(manual){
+  if (!draws.length) { if (manual) alert("先载入历史数据再结算"); return; }
+  if (LEDGER.busy) return;
+  ledgerLoad();
+  if (!ARENA.sp || ARENA.sp.length !== draws.length) ARENA.sp = draws.map(function(d){ return d.special; });
+  var sig = draws.length + ":" + (draws[0] && draws[0].issue);
+  LEDGER.sig = sig;
+
+  // 数据集换了（香港/澳门切换）→ 模型归零重训
+  if (LEDGER.sig !== sig){
+    var s2 = 20261112;
+    LEDGER.model = nnInit(function(){ s2 ^= s2 << 13; s2 ^= s2 >>> 17; s2 ^= s2 << 5; s2 = s2 >>> 0; return s2 / 4294967296; });
+    LEDGER.rows = []; LEDGER.sig = sig; LEDGER.pos = { sig: sig, n: 60 };
+  }
+
+  // 从上次处理到的位置继续（期号每年会重复，必须按位置记，不能按期号找）
+  var pos = 60;
+  if (LEDGER.pos && LEDGER.pos.sig === sig && LEDGER.pos.n >= 60 && LEDGER.pos.n <= draws.length) pos = LEDGER.pos.n;
+  LEDGER.pos = { sig: sig, n: pos };
+
+  LEDGER.busy = true;
+  var S = { i: pos, end: draws.length, added: 0, X: new Float64Array(NN_D), H: new Float64Array(NN_H), P: new Float64Array(NN_OUT), arr: new Int32Array(50), manual: !!manual };
+  ledgerStep(S);
+}
+
+function ledgerStep(S){
+  var SP = ARENA.sp, t0 = Date.now(), BATCH = 120;
+  while (S.i < S.end && Date.now() - t0 < 120){
+    for (var c = 0; c < BATCH && S.i < S.end; c++, S.i++){
+      var i = S.i;
+      nnEncode(S.X, SP, i);
+      nnForward(LEDGER.model, S.X, S.H, S.P);
+      for (var k = 1; k <= 49; k++) S.arr[k] = Math.round(S.P[k-1] * 1000000);
+      var pool = arenaPick(S.arr, 18, true);
+      var truth = SP[i];
+      LEDGER.rows.push({
+        issue: String(draws[i].issue),
+        pred: pool.slice(0, 6),
+        special: truth,
+        hit: pool.indexOf(truth) >= 0 ? 1 : 0,
+        hitTop6: pool.slice(0, 6).indexOf(truth) >= 0 ? 1 : 0,
+        conf: +(S.P[pool[0]-1] * 100).toFixed(1),
+        t: new Date().toLocaleDateString()
+      });
+      nnTrain(LEDGER.model, S.X, S.H, S.P, truth);
+      S.added++;
+    }
+    var st = document.getElementById("ledger-stat");
+    if (st) st.innerHTML = "正在结算… " + S.i + " / " + S.end + " 期（已新增 " + S.added + " 条）";
+  }
+  if (S.i < S.end){ setTimeout(function(){ ledgerStep(S); }, 0); return; }
+
+  LEDGER.busy = false;
+  LEDGER.pos = { sig: LEDGER.sig, n: S.end };
+  ledgerSave();
+  ledgerRender();
+  if (S.manual && !S.added) alert("没有新期可结算（流水已覆盖到第 " + (LEDGER.rows.length ? LEDGER.rows[LEDGER.rows.length-1].issue : "-") + " 期）");
+}
+
+function ledgerRender(){
+  var stat = document.getElementById("ledger-stat"), tb = document.getElementById("ledger-table");
+  if (!stat) return;
+  var n = LEDGER.rows.length, hit6 = 0, hit18 = 0;
+  LEDGER.rows.forEach(function(r){ if (r.hitTop6) hit6++; if (r.hit) hit18++; });
+  var pct6 = n ? (hit6 / n * 100).toFixed(2) : "0.00";
+  var pct18 = n ? (hit18 / n * 100).toFixed(2) : "0.00";
+  var nTrained = LEDGER.model ? LEDGER.model.n : 0;
+  stat.innerHTML = "已结算 <b>" + n + "</b> 期｜前6码命中 " + hit6 + " 期（" + pct6 + "%，随机 12.24%）｜前18码命中 " + hit18 + " 期（" + pct18 + "%，随机 36.73%）｜模型已训练 " + nTrained + " 步";
+  if (!n){ tb.innerHTML = "<div style='color:#666;font-size:12px;padding:6px;'>还没有流水。载入数据后点「立即结算新期」，或等着它自动结算。</div>"; return; }
+  var rows = LEDGER.rows.slice(-40).reverse();
+  var html = "<table style='width:100%;border-collapse:collapse;font-size:12px;'><tr style='background:#e0e0e0;'><th style='padding:4px;'>期号</th><th>AI 预测前6码</th><th>实际特码</th><th>前6码</th><th>前18码</th><th>日期</th></tr>";
+  rows.forEach(function(r){
+    var c1 = r.hitTop6 ? "#16a34a" : "#9ca3af";
+    var c2 = r.hit ? "#16a34a" : "#ef4444";
+    html += "<tr style='border-bottom:1px solid #eee;'><td style='padding:4px;'>" + r.issue + "期</td><td style='text-align:center;'>" + r.pred.map(pad2).join(" ") + "</td><td style='text-align:center;font-weight:700;'>" + pad2(r.special) + "</td><td style='text-align:center;color:" + c1 + ";'>" + (r.hitTop6 ? "中" : "—") + "</td><td style='text-align:center;color:" + c2 + ";font-weight:700;'>" + (r.hit ? "中" : "错") + "</td><td style='text-align:center;color:#888;'>" + r.t + "</td></tr>";
+  });
+  html += "</table>";
+  tb.innerHTML = html;
+}
+
+function ledgerExport(){
+  if (!LEDGER.rows.length){ alert("还没有流水可导出"); return; }
+  var txt = "AI 预测流水（每期预测 → 实际结果）\n导出时间：" + new Date().toLocaleString() + "\n\n";
+  txt += "期号\t预测前6码\t实际特码\t前6码命中\t前18码命中\n";
+  LEDGER.rows.forEach(function(r){
+    txt += r.issue + "\t" + r.pred.map(pad2).join(" ") + "\t" + pad2(r.special) + "\t" + (r.hitTop6 ? "中" : "-") + "\t" + (r.hit ? "中" : "错") + "\n";
+  });
+  var n = LEDGER.rows.length, h18 = LEDGER.rows.filter(function(r){ return r.hit; }).length;
+  txt += "\n合计 " + n + " 期，前18码命中 " + h18 + " 期（" + (h18 / n * 100).toFixed(2) + "%），随机理论值 36.73%\n";
+  saveTextFile(txt, "AI预测流水_" + Date.now() + ".txt");
+}
+
+function ledgerReset(){
+  if (!confirm("清空流水并重新训练模型？（历史数据不受影响）")) return;
+  LEDGER.rows = []; LEDGER.sig = ""; LEDGER.model = null; LEDGER.pos = null;
+  try { localStorage.removeItem("ai_nn_model"); localStorage.removeItem("ai_ledger"); localStorage.removeItem("ai_ledger_sig"); localStorage.removeItem("ai_ledger_pos"); } catch(e) {}
+  ledgerLoad(); ledgerSave(); ledgerRender();
+}
+
+function ledgerAutoToggle(){ ledgerAuto = document.getElementById("ledger-auto").checked; }
+
+var ledgerAuto = true, ledgerLastLen = -1;
+function ledgerAutoCheck(){
+  try {
+    if (!ledgerAuto) return;
+    if (typeof draws === "undefined" || !draws.length) return;
+    if (draws.length === ledgerLastLen) return;
+    ledgerLastLen = draws.length;
+    ledgerRun(false);
+  } catch(e) {}
+}
+document.addEventListener("DOMContentLoaded", function(){
+  ledgerLoad(); ledgerRender();
+  setTimeout(ledgerAutoCheck, 3000);
+  setInterval(ledgerAutoCheck, 5000);
+});
 </script>
 </body>
 </html>
