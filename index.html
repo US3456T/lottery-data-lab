@@ -105,8 +105,8 @@ button.primary:hover { background: var(--accent); }
 
       <!-- 一键载入内置真实记录（回测1500期：两套命中率都贴近随机基线，无显著差异） -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
-        <button class="primary" onclick="loadRemoteData('data/hk.txt','香港记录')">载入香港记录（3682期）</button>
-        <button class="primary" onclick="loadRemoteData('data/mo.txt','澳门记录')">载入澳门记录（2362期）</button>
+        <button class="primary" onclick="loadRemoteData('hk.txt','香港记录')">载入香港记录（3682期）</button>
+        <button class="primary" onclick="loadRemoteData('mo.txt','澳门记录')">载入澳门记录（2362期）</button>
         <span class="hint" style="font-size:11px;color:var(--text-dim);">回测1500期：香港 24码50.1% / 12码24.1% / 10肖83.6%；澳门 49.5% / 25.8% / 84.7%；随机基线 49.0% / 24.5% / 83.3%</span>
       </div>
       <!-- 最新一期（记忆） -->
