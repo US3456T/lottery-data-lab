@@ -71,7 +71,8 @@ button.primary:hover { background: var(--accent); }
     <span class="badge" id="dataset-badge">未加载数据</span>
   </div>
 </header>
-<div id="auto-bar" style="display:none;padding:6px 12px;background:#0f172a;border-bottom:1px solid #334155;font-size:12px;color:#e2e8f0;line-height:1.9;"></div>
+<!-- 顶部自动条已移除：推荐内容全部搬到「📋 推荐分组」页面 -->
+<div id="auto-bar" style="display:none;"></div>
 
 <!-- 右下角浮动：一滑到底 / 回顶部 / 显示期数 -->
 <div id="scroll-fab" style="position:fixed;right:12px;bottom:90px;z-index:9999;display:flex;flex-direction:column;gap:6px;align-items:stretch;">
@@ -96,6 +97,7 @@ button.primary:hover { background: var(--accent); }
 
   <section class="content">
     <nav class="tabs">
+      <button class="tab" data-tab="auto" style="background:#7f1d1d;color:#fff;font-weight:700;">📋 推荐分组</button>
       <button class="tab" data-tab="data">📚 历史数据</button>
       <button class="tab" data-tab="report">🔮 智能预测</button>
       <button class="tab" data-tab="diag">📊 综合诊断</button>
@@ -106,6 +108,10 @@ button.primary:hover { background: var(--accent); }
       <button class="tab" data-tab="source">📡 开奖数据源</button>
       <button class="tab active" data-tab="chat">🤖 AI 对话</button>
     </nav>
+
+    <div class="tab-pane" id="pane-auto">
+      <div id="auto-page" style="padding:6px 4px 40px;"></div>
+    </div>
 
     <div class="tab-pane" id="pane-data">
       <div class="row" style="align-items:center;gap:8px;margin-bottom:12px;">
@@ -656,7 +662,7 @@ function openChecked(){
 
 // ===== Tab切换 =====
 document.querySelectorAll(".tab").forEach(btn=>{
-  btn.onclick=()=>{document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));document.querySelectorAll(".tab-pane").forEach(p=>p.classList.remove("active"));btn.classList.add("active");document.getElementById("pane-"+btn.dataset.tab).classList.add("active");};
+  btn.onclick=()=>{document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));document.querySelectorAll(".tab-pane").forEach(p=>p.classList.remove("active"));btn.classList.add("active");document.getElementById("pane-"+btn.dataset.tab).classList.add("active"); if(btn.dataset.tab==="auto"){ try{ renderAutoPage(); }catch(e){} } };
 });
 
 // ===== 页面操作 =====
@@ -780,6 +786,154 @@ function cycleViewLimit(){
   try { localStorage.setItem("view_limit", window.VIEW_LIMIT); } catch(e) {}
   renderDrawList();
   scrollPane("top");
+}
+
+// ===== 独立的「本期推荐」页面：只看最有用的东西，不用翻历史 =====
+function bigChip(n, idx, size){
+  var a = numInfo(n, idx);
+  var bg = a.color === "red" ? "#e11d48" : (a.color === "blue" ? "#2563eb" : "#16a34a");
+  var fs = size === "big" ? 26 : 20;
+  return "<div style='display:inline-block;vertical-align:top;margin:4px;padding:6px 8px;border-radius:8px;background:" + bg +
+    ";color:#fff;text-align:center;min-width:" + (size === "big" ? 62 : 52) + "px;box-shadow:0 1px 4px rgba(0,0,0,.25);'>" +
+    "<div style='font-size:" + fs + "px;font-weight:800;line-height:1.1;'>" + pad2(n) + "</div>" +
+    "<div style='font-size:" + (size === "big" ? 15 : 12) + "px;margin-top:2px;'>" + a.zod + "</div>" +
+    "<div style='font-size:11px;opacity:.92;'>尾" + a.tail + " " + a.head + "头</div>" +
+    "<div style='font-size:11px;opacity:.92;'>合" + a.sum + " " + a.big + a.odd + "</div>" +
+    "</div>";
+}
+function renderAutoPage(){
+  var box = document.getElementById("auto-page");
+  if (!box) return;
+  if (!draws.length){
+    box.innerHTML = "<div style='padding:20px;font-size:14px;color:#666;'>还没有数据。到「📚 历史数据」页点「载入澳门记录」或「载入香港记录」，这里会自动出结果。</div>";
+    return;
+  }
+  var last = draws[draws.length - 1];
+  var next = pad3(parseInt(last.issue, 10) + 1);
+  var h = dataHealth(draws);
+  var warn = h.dup > 0
+    ? "<div style='background:#fee2e2;color:#991b1b;padding:8px 10px;border-radius:6px;font-size:13px;margin-bottom:10px;'>⚠ 检测到 " + h.dup + " 条重复记录，会把期号/生肖算乱。<a href='javascript:dedupeData()' style='color:#991b1b;'>点这里一键去重</a></div>"
+    : "<div style='color:#16a34a;font-size:12px;margin-bottom:10px;'>✔ 数据自检正常（" + h.total + " 期，无重复）</div>";
+
+  var row = LEDGER.rows && LEDGER.rows.length ? LEDGER.rows[LEDGER.rows.length - 1] : null;
+  if (!row){
+    box.innerHTML = "<div class='panel'><div style='padding:16px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;color:#475569;font-size:13px;'>数据已读入，正在自动算号……如果一直不出现，点下面按钮手动算一次。</div>" +
+      "<div style='margin-top:10px;'><button class='primary' onclick='ledgerRun(true)'>立即算推荐</button></div></div>";
+    return;
+  }
+  var p18 = row.pred18 || row.pred;
+  var p6 = row.pred;
+  var idx = row.idx;
+
+  function chip(n, big){
+    var a = numInfo(n, idx);
+    var bg = a.color === "red" ? "#e11d48" : (a.color === "blue" ? "#2563eb" : "#16a34a");
+    return "<span style='display:inline-block;margin:2px 3px;padding:" + (big ? "4px 8px" : "2px 6px") +
+      ";border-radius:6px;background:" + bg + ";color:#fff;font-size:" + (big ? "17px" : "13px") + ";font-weight:700;'>" + pad2(n) + "</span>";
+  }
+  function tbl(headers, rowsHtml){
+    return "<table style='width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px;'><thead><tr style='background:#f1f5f9;color:#334155;'>" +
+      headers.map(function(t){ return "<th style='padding:6px;border-bottom:1px solid #e2e8f0;font-weight:600;'>" + t + "</th>"; }).join("") +
+      "</tr></thead><tbody>" + rowsHtml + "</tbody></table>";
+  }
+  function secs(title, sub){
+    return "<div style='font-size:15px;font-weight:700;color:#0f172a;margin:14px 0 4px;'>" + title + "</div>" +
+      (sub ? "<div style='font-size:12px;color:#64748b;margin-bottom:6px;'>" + sub + "</div>" : "");
+  }
+  var body = "";
+
+  // ① 一行一个号码（18 行，互不重复）
+  body += secs("① 号码明细（一行一个号，共 " + p18.length + " 个，互不重复）", "按推荐顺序排，前 6 个是重点号");
+  body += tbl(["序号", "号码", "生肖", "波色", "尾数", "头数", "合数", "大小", "单双", "标记"],
+    p18.map(function(n, i){
+      var a = numInfo(n, idx);
+      var sp = a.zod === last.specialZodiac ? "上期特码肖" : "—";
+      return "<tr style='border-bottom:1px solid #eee;'><td style='padding:5px;text-align:center;color:#888;'>" + (i+1) + "</td>" +
+        "<td style='text-align:center;'>" + chip(n, i < 6) + "</td>" +
+        "<td style='text-align:center;font-weight:700;'>" + a.zod + "</td>" +
+        "<td style='text-align:center;'>" + a.colorCn + "</td>" +
+        "<td style='text-align:center;'>" + a.tail + "</td><td style='text-align:center;'>" + a.head + "</td>" +
+        "<td style='text-align:center;'>" + a.sum + "</td><td style='text-align:center;'>" + a.big + "</td>" +
+        "<td style='text-align:center;'>" + a.odd + "</td>" +
+        "<td style='text-align:center;font-size:11px;color:" + (i < 6 ? "#b91c1c" : "#aaa") + ";'>" + (i < 6 ? "重点" : sp) + "</td></tr>";
+    }).join(""));
+
+  // ② 生肖归生肖（每个生肖一行）
+  var ZS12 = ["鼠","牛","虎","兔","龙","蛇","马","羊","猴","鸡","狗","猪"];
+  body += secs("② 按生肖归组（同一个生肖的号排在一起）", "每个号码只属于一个生肖，不会重复出现");
+  body += tbl(["生肖", "该生肖的号码", "个数"], ZS12.map(function(z){
+    var ns = p18.filter(function(n){ return numInfo(n, idx).zod === z; });
+    return "<tr style='border-bottom:1px solid #eee;'><td style='text-align:center;padding:6px;font-weight:700;font-size:15px;'>" + z + "</td>" +
+      "<td style='padding:6px;'>" + (ns.length ? ns.map(function(n){ return chip(n, false); }).join("") : "<span style='color:#cbd5e1;'>（本期推荐里没有）</span>") + "</td>" +
+      "<td style='text-align:center;color:#64748b;'>" + ns.length + "</td></tr>";
+  }).join(""));
+
+  // ③ 尾数归尾数
+  body += secs("③ 按尾数归组（尾数 0～9）", "尾数＝号码个位");
+  body += tbl(["尾数", "该尾数的号码", "个数"], [0,1,2,3,4,5,6,7,8,9].map(function(t){
+    var ns = p18.filter(function(n){ return (n % 10) === t; });
+    return "<tr style='border-bottom:1px solid #eee;'><td style='text-align:center;padding:6px;font-weight:700;'>尾" + t + "</td>" +
+      "<td style='padding:6px;'>" + (ns.length ? ns.map(function(n){ return chip(n, false); }).join("") : "<span style='color:#cbd5e1;'>—</span>") + "</td>" +
+      "<td style='text-align:center;color:#64748b;'>" + ns.length + "</td></tr>";
+  }).join(""));
+
+  // ④ 波色归波色
+  body += secs("④ 按波色归组", "红波 / 蓝波 / 绿波");
+  body += tbl(["波色", "该波色的号码", "个数"], [["red","红波"],["blue","蓝波"],["green","绿波"]].map(function(p){
+    var ns = p18.filter(function(n){ return numInfo(n, idx).color === p[0]; });
+    return "<tr style='border-bottom:1px solid #eee;'><td style='text-align:center;padding:6px;font-weight:700;color:" +
+      (p[0]==="red"?"#e11d48":p[0]==="blue"?"#2563eb":"#16a34a") + ";'>" + p[1] + "</td>" +
+      "<td style='padding:6px;'>" + (ns.length ? ns.map(function(n){ return chip(n, false); }).join("") : "<span style='color:#cbd5e1;'>—</span>") + "</td>" +
+      "<td style='text-align:center;color:#64748b;'>" + ns.length + "</td></tr>";
+  }).join(""));
+
+  // ⑤ 头数归头数
+  body += secs("⑤ 按头数归组（头数 0～4）", "头数＝号码十位");
+  body += tbl(["头数", "该头数的号码", "个数"], [0,1,2,3,4].map(function(t){
+    var ns = p18.filter(function(n){ return Math.floor(n / 10) === t; });
+    return "<tr style='border-bottom:1px solid #eee;'><td style='text-align:center;padding:6px;font-weight:700;'>" + t + "头</td>" +
+      "<td style='padding:6px;'>" + (ns.length ? ns.map(function(n){ return chip(n, false); }).join("") : "<span style='color:#cbd5e1;'>—</span>") + "</td>" +
+      "<td style='text-align:center;color:#64748b;'>" + ns.length + "</td></tr>";
+  }).join(""));
+
+  // ⑥ 重点 6 码
+  body += secs("⑥ 重点 6 码（最看好的 6 个）", "历史命中约 12.24%，与随机同水平");
+  body += tbl(["序号", "号码", "生肖", "波色", "尾数", "头数", "合数", "大小单双"],
+    p6.map(function(n, i){
+      var a = numInfo(n, idx);
+      return "<tr style='border-bottom:1px solid #eee;'><td style='text-align:center;color:#888;'>" + (i+1) + "</td>" +
+        "<td style='text-align:center;'>" + chip(n, true) + "</td>" +
+        "<td style='text-align:center;font-weight:700;'>" + a.zod + "</td><td style='text-align:center;'>" + a.colorCn + "</td>" +
+        "<td style='text-align:center;'>" + a.tail + "</td><td style='text-align:center;'>" + a.head + "</td>" +
+        "<td style='text-align:center;'>" + a.sum + "</td><td style='text-align:center;'>" + a.big + a.odd + "</td></tr>";
+    }).join(""));
+
+  // ⑦ 结算成绩
+  var hits = LEDGER.rows.filter(function(r){ return r.hit; }).length;
+  var rate = (hits / LEDGER.rows.length * 100).toFixed(2);
+  body += secs("⑦ 自动结算成绩");
+  body += "<div style='background:#0f172a;color:#e2e8f0;border-radius:8px;padding:12px;font-size:13px;line-height:1.9;'>" +
+    "已自动结算 <b>" + LEDGER.rows.length + "</b> 期 ｜ 前18码命中 <b>" + hits + "</b> 期（<b>" + rate + "%</b>）｜ 随机理论值 36.73%<br>" +
+    "<span style='color:#94a3b8;font-size:12px;'>18 码覆盖是唯一稳定的用法；单点一个特码号没有任何模型能超过 2% 左右。</span></div>";
+
+  box.innerHTML = "<div style='display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;'>" +
+    "<div style='background:#0ea5e9;color:#fff;padding:8px 14px;border-radius:8px;font-size:15px;'><b>最新一期：第 " + last.issue + " 期</b></div>" +
+    "<div style='background:#7f1d1d;color:#fff;padding:8px 14px;border-radius:8px;font-size:15px;'><b>下一期：第 " + next + " 期</b></div>" +
+    "<div style='font-size:12px;color:#64748b;'>数据 " + draws.length + " 期 ｜ 上期特码 " + pad2(last.special) + "（" + (last.specialZodiac || "") + "）</div></div>" +
+    warn + body +
+    "<div style='margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;'>" +
+    "<button class='primary' onclick='ledgerRun(true)'>🔄 重新算一遍</button>" +
+    "<button class='primary' onclick='copyAutoPick()'>📋 复制推荐</button></div>";
+}
+function copyAutoPick(){
+  if (!LEDGER.rows || !LEDGER.rows.length){ alert("还没有算出推荐，先点「重新算一遍」"); return; }
+  var r = LEDGER.rows[LEDGER.rows.length - 1];
+  var p18 = r.pred18 || r.pred;
+  var txt = "第 " + r.issue + " 期之后 → 下一期 " + pad3(parseInt(r.issue,10)+1) + " 期\n覆盖 " + p18.length + " 码：\n" +
+    p18.map(function(n){ var a = numInfo(n, r.idx); return pad2(n) + " " + a.zod + " " + a.colorCn + " 尾" + a.tail + " " + a.head + "头 合" + a.sum; }).join("\n");
+  try {
+    navigator.clipboard.writeText(txt).then(function(){ alert("已复制到剪贴板"); }, function(){ alert(txt); });
+  } catch(e) { alert(txt); }
 }
 
 function renderLatest(){
@@ -1017,6 +1171,32 @@ function healthCheck(){
   box.scrollIntoView({behavior:"smooth", block:"start"});
 }
 
+// 一期 → 统一文本块（8 行，一行一件事），香港、澳门用同一套格式
+function drawTextBlock(d, idx, yz){
+  var n7 = d.normals.concat([d.special]);
+  var zs = [], cs = [];
+  for (var i = 0; i < 7; i++){
+    var n = n7[i];
+    var z = (i === 6 ? drawZodiac(d, idx) : zodiacOf(n, idx));
+    zs.push(z);
+    cs.push(ballColor(n));
+  }
+  var p2 = pad2;
+  var head = "第 " + d.issue + " 期" + (d.year ? " · " + d.year + " 年" : (yz ? " · " + yz + " 年" : ""));
+  var L = [];
+  L.push("号码： " + n7.slice(0,6).map(p2).join("  ") + "   ｜ 特码 " + p2(d.special));
+  L.push("生肖： " + zs.slice(0,6).join("  ") + "   ｜ " + zs[6]);
+  L.push("波色： " + cs.slice(0,6).map(function(c){ return c + "波"; }).join("  ") + "   ｜ " + cs[6] + "波");
+  L.push("尾数： " + n7.slice(0,6).map(function(n){ return String(n % 10); }).join("    ") + "    ｜ " + (d.special % 10));
+  L.push("头数： " + n7.slice(0,6).map(function(n){ return String(Math.floor(n / 10)); }).join("    ") + "    ｜ " + Math.floor(d.special / 10));
+  L.push("合数： " + n7.slice(0,6).map(function(n){ return String(Math.floor(n / 10) + n % 10); }).join("   ") + "   ｜ " + (Math.floor(d.special / 10) + d.special % 10));
+  L.push("大小： " + n7.slice(0,6).map(function(n){ return n >= 25 ? "大" : "小"; }).join("    ") + "    ｜ " + (d.special >= 25 ? "大" : "小"));
+  L.push("单双： " + n7.slice(0,6).map(function(n){ return (n % 2) ? "单" : "双"; }).join("    ") + "    ｜ " + ((d.special % 2) ? "单" : "双"));
+  return "<div style='font-weight:800;font-size:15px;color:#0f172a;margin-bottom:4px;'>" + head + "</div>" +
+    "<pre style='margin:0;font-family:Consolas,\"Courier New\",monospace;font-size:13.5px;line-height:1.75;white-space:pre-wrap;user-select:text;color:#1f2937;'>" +
+    L.join("\n") + "</pre>";
+}
+
 function renderDrawList() {
   const list = document.getElementById("draw-list");
   if(!list) return;
@@ -1057,22 +1237,14 @@ function renderDrawList() {
 
     const row = document.createElement("div");
     row.className = "draw-row";
-    let html = '<div class="draw-issue">' + d.issue + "期</div>";
-    d.normals.forEach((n, i) => {
-      const z = zodiacOf(n, idx);
-      html += ball(n, z, false);
-    });
-    html += '<div style="display:flex;align-items:center;font-size:19px;font-weight:700;color:#f9a825;margin:0 6px;white-space:nowrap;">= 特码T码 =</div>';
-    const sz = drawZodiac(d, idx);
-    html += ball(d.special, sz, true);
-    html += '<div style="display:flex;align-items:center;margin-left:6px;white-space:nowrap;font-size:11px;gap:3px;">' + zodiacPropsHtml(sz) + '</div>';
-    const size = d.special >= 25 ? "大" : "小";
-    const parity = d.special % 2 === 1 ? "单" : "双";
-    const seg = Math.floor(d.special/10) + "段";
-    const he = (Math.floor(d.special/10) + d.special%10) + "合";
-    html += '<div class="draw-tail">' + size + " " + parity + "肖 " + seg + " " + he + "</div>";
-    // 自动属性条：每个号码的 生肖 / 波色 / 尾数 / 头数（数据一进来就自动算，无需任何按钮）
-    try { html += drawAttrsHtml(d, idx); } catch(e) {}
+    row.style.cssText = "display:block;padding:10px 12px;border-bottom:1px solid #e5e8ed;";
+    // 统一格式：一行一件事（号码/生肖/波色/尾数/头数/合数/大小/单双），香港澳门完全一样
+    let html = "";
+    try {
+      html = drawTextBlock(d, idx, yz);
+    } catch (e) {
+      html = "<div class='draw-issue'>" + d.issue + "期</div>";
+    }
     row.innerHTML = html;
     list.appendChild(row);
   }
@@ -2100,32 +2272,7 @@ function ballChip(n, idx){
 }
 
 // ===== 顶部自动条：数据一载入就自动算好，直接显示，不用点任何按钮 =====
-function renderAutoBar(){
-  var bar = document.getElementById("auto-bar");
-  if (!bar) return;
-  var warn = "";
-  try {
-    var h = dataHealth(draws);
-    if (h.dup > 0) {
-      warn = "<span style='background:#7f1d1d;color:#fff;padding:2px 8px;border-radius:4px;margin-right:10px;'>⚠ 数据里有 " +
-        h.dup + " 条完全重复的记录（会把期号/生肖算乱）</span><a href='javascript:dedupeData()' style='color:#fca5a5;text-decoration:underline;margin-right:12px;'>一键去重</a>";
-    } else if (draws.length) {
-      warn = "<span style='color:#4ade80;margin-right:10px;'>✔ 数据自检正常（" + h.total + " 期，无重复）</span>";
-    }
-  } catch(e) {}
-  if (!LEDGER || !LEDGER.rows || !LEDGER.rows.length){
-    bar.innerHTML = warn; bar.style.display = warn ? "block" : "none"; return;
-  }
-  var last = LEDGER.rows[LEDGER.rows.length - 1];
-  var p18 = last.pred18 || last.pred;
-  var hits = LEDGER.rows.filter(function(r){ return r.hit; }).length;
-  var rate = (hits / LEDGER.rows.length * 100).toFixed(2);
-  bar.innerHTML = "<b style='color:#38bdf8;'>🤖 自动推荐（无需点按钮）</b>　" + warn + "最新 " + last.issue + " 期 → 下一期 " + pad3(parseInt(last.issue,10)+1) + " 期，覆盖 " + p18.length + " 码：" +
-    p18.map(function(n){ return infoChip(n, last.idx); }).join("") +
-    "<span style='color:#94a3b8;margin-left:10px;'>已自动结算 " + LEDGER.rows.length + " 期｜前18码命中 " + hits +
-    " 期（" + rate + "%）｜随机约 36.73%</span>";
-  bar.style.display = "block";
-}
+function renderAutoBar(){ /* 顶部自动推荐条已移除，内容全部在「📋 推荐分组」页 */ }
 
 function ledgerRender(){
   var stat = document.getElementById("ledger-stat"), tb = document.getElementById("ledger-table");
@@ -2160,6 +2307,7 @@ function ledgerRender(){
   html += "</table>";
   tb.innerHTML = html;
   try { renderAutoBar(); } catch(e) {}
+  try { renderAutoPage(); } catch(e) {}
 }
 
 function ledgerExport(){
