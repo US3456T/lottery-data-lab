@@ -71,6 +71,7 @@ button.primary:hover { background: var(--accent); }
     <span class="badge" id="dataset-badge">未加载数据</span>
   </div>
 </header>
+<div id="auto-bar" style="display:none;padding:6px 12px;background:#0f172a;border-bottom:1px solid #334155;font-size:12px;color:#e2e8f0;line-height:1.9;"></div>
 
 <main>
   <aside>
@@ -80,7 +81,9 @@ button.primary:hover { background: var(--accent); }
       <button class="mini" onclick="checkNone()">清空</button>
       <button class="mini" onclick="checkAI()">仅AI</button>
       <button class="mini" onclick="checkWeb()">仅Web</button>
+      <button class="mini" style="background:#2563eb;color:#fff;" onclick="openChecked()">打开已勾选</button>
     </div>
+    <div style="font-size:11px;color:#888;padding:0 4px 6px;">点右边「打开」→ 单独窗口里直接用它，本工作台不关</div>
     <ul class="engine-list" id="engine-list"></ul>
   </aside>
 
@@ -123,6 +126,7 @@ button.primary:hover { background: var(--accent); }
       <!-- 数据体检 -->
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
         <button class="primary" onclick="healthCheck()">🩺 数据体检</button>
+        <button class="primary" style="background:#7f1d1d;color:#fff;" onclick="dedupeData()">🧹 一键去重（修串期）</button>
         <button class="primary" onclick="backupData()">💾 数据备份（存到本电脑）</button>
         <button class="primary" onclick="document.getElementById('file-input').click()">📂 打开备份文件（恢复）</button>
         <span class="hint" style="font-size:11px;color:var(--text-dim);">备份文件自己选保存位置（第一次请选 D:\AI数据，Chrome 会记住这个文件夹）；备份出来的 txt 以后可直接重新导入</span>
@@ -307,8 +311,32 @@ function ball(n, zodiac, isSpecial) {
     "</div>";
 }
 
-function zodiacPropsHtml(z) {
-  const p = ZODIAC_PROPS[z];
+// ===== 号码全属性（自动显示用）：生肖 / 波色 / 尾数 / 头数 / 合数 / 大小 / 单双 =====
+function numHead(n){ return Math.floor(n / 10); }
+function numInfo(n, idx){
+  var c = colorOf(n);
+  var tail = n % 10, head = Math.floor(n / 10);
+  var z = "";
+  try { z = zodiacOf(n, idx); } catch(e) { z = ""; }
+  return { n: n, zod: z, color: c, colorCn: c === "red" ? "红波" : (c === "blue" ? "蓝波" : "绿波"),
+           tail: tail, head: head, sum: head + tail, big: n >= 25 ? "大" : "小", odd: (n % 2) ? "单" : "双" };
+}
+function infoChip(n, idx){
+  var a = numInfo(n, idx);
+  var bg = a.color === "red" ? "#e11d48" : (a.color === "blue" ? "#2563eb" : "#16a34a");
+  return "<span style='display:inline-block;margin:2px 3px;padding:2px 6px;border-radius:4px;background:" + bg +
+    ";color:#fff;font-size:11px;white-space:nowrap;'>" + pad2(n) + " " + a.zod + " 尾" + a.tail + " " + a.head + "头</span>";
+}
+// 一整期 7 个号码的属性条（自动生成，不需要点任何按钮）
+function drawAttrsHtml(d, idx){
+  var all = d.normals.concat([d.special]);
+  var s = all.map(function(n){ return infoChip(n, idx); }).join("");
+  var sp = numInfo(d.special, idx);
+  return "<div class='draw-attrs' style='display:flex;flex-wrap:wrap;align-items:center;gap:2px;margin:4px 0 0 6px;'>" + s +
+    "<span style='font-size:11px;color:#f9a825;margin-left:8px;'>特码 " + sp.colorCn + " " + sp.zod + " 尾" + sp.tail + " " + sp.head + "头 合" + sp.sum + " " + sp.big + sp.odd + "</span></div>";
+}
+
+function zodiacPropsHtml(z) {  const p = ZODIAC_PROPS[z];
   if (!p) return "";
   const tags = [p.type, p.lucky, p.yin, p.stroke, p.gender+"肖", p.heaven+"肖"];
   return tags.map(t => '<span style="display:inline-block;background:#e0e0e0;color:#333;border-radius:3px;padding:1px 5px;margin:0 2px;font-size:10px;">'+t+'</span>').join("");
@@ -431,6 +459,29 @@ function zodiacOf(n,idx){
 function countBy(arr,fn){const c={};for(const x of arr){const k=fn(x);c[k]=(c[k]||0)+1;}return c;}
 function parseNumbers(s){if(!s)return[];const parts=s.replace(/[，,、\s]+/g," ").trim().split(" ").filter(Boolean);const out=[];for(const p of parts){const n=parseInt(p);if(n>=1&&n<=49){out.push(n);continue;}if(ZODIAC_INPUT[p])out.push(...ZODIAC_INPUT[p]);}return[...new Set(out)];}
 function pad2(n){return String(n).padStart(2,"0");}
+function pad3(n){return String(n).padStart(3,"0");}
+
+// ===== 数据自检 + 一键去重（防止重复导入把期号、生肖算乱）=====
+function dataHealth(d){
+  var dup = 0, seen = {}, tooLong = 0;
+  for (var i = 0; i < d.length; i++){
+    var k = d[i].issue + "|" + d[i].normals.join(",") + "|" + d[i].special;
+    if (seen[k]) dup++; else seen[k] = 1;
+    if (+d[i].issue > 500) tooLong++;
+  }
+  return { dup: dup, total: d.length, tooLong: tooLong };
+}
+function dedupeData(){
+  if (!draws.length) { alert("还没有数据"); return; }
+  var seen = {}, kept = [];
+  draws.forEach(function(x){
+    var k = x.issue + "|" + x.normals.join(",") + "|" + x.special;
+    if (!seen[k]) { seen[k] = 1; kept.push(x); }
+  });
+  var removed = draws.length - kept.length;
+  setData(kept);
+  alert("去重完成：删除 " + removed + " 条完全重复的记录，剩余 " + kept.length + " 期。\n最新一期：第 " + kept[kept.length-1].issue + " 期，下一期 " + pad3(parseInt(kept[kept.length-1].issue,10)+1) + " 期。");
+}
 
 // ===== 统计 =====
 function hotCold(n=30){
@@ -565,12 +616,15 @@ function renderEngines(){
         <div class="name">${e.name} <span class="tag">${e.tag}</span></div>
         <div class="meta">${e.vendor} · ${e.desc}</div>${readyTag}
       </div>
+      <button class="mini" data-open="${e.id}" style="background:#2563eb;color:#fff;white-space:nowrap;">打开</button>
     </div>`;
     li.onclick=()=>{
       if(checkedEngines.has(e.id)){checkedEngines.delete(e.id);li.classList.remove("checked");}
       else{checkedEngines.add(e.id);li.classList.add("checked");}
       renderEngines();
     };
+    const ob = li.querySelector("button[data-open]");
+    if (ob) ob.onclick = (ev) => { ev.stopPropagation(); openEngine(e); };
     ul.appendChild(li);
   });
 }
@@ -578,6 +632,20 @@ function checkAll(){checkedEngines=new Set(ENGINES.map(e=>e.id));renderEngines()
 function checkNone(){checkedEngines.clear();renderEngines();}
 function checkAI(){checkedEngines=new Set(ENGINES.filter(e=>e.tag==="AI").map(e=>e.id));renderEngines();}
 function checkWeb(){checkedEngines=new Set(ENGINES.filter(e=>e.vendor==="Web").map(e=>e.id));renderEngines();}
+
+// 单独窗口打开某个 AI 工具（工作台不关，可并排用）
+function openEngine(e){
+  if(!e || !e.url){ alert("这个工具还没有网址"); return; }
+  const w = window.open(e.url, "ai_win_" + e.id,
+    "width=1280,height=860,menubar=no,toolbar=no,location=yes,resizable=yes,scrollbars=yes");
+  if(!w) alert("浏览器拦截了弹窗。请在本页右上角允许「弹出窗口」，再点一次「打开」。");
+}
+function openChecked(){
+  const list = ENGINES.filter(e => checkedEngines.has(e.id) && e.url);
+  if(!list.length){ alert("先勾选要用的工具（或点「仅AI」「全选」）"); return; }
+  if(list.length > 5 && !confirm("要打开 " + list.length + " 个窗口吗？浏览器可能只放行一部分。")) return;
+  list.forEach((e, i) => setTimeout(() => openEngine(e), i * 400));
+}
 
 // ===== Tab切换 =====
 document.querySelectorAll(".tab").forEach(btn=>{
@@ -596,6 +664,8 @@ function setData(d){
   renderDrawList();
   renderLatest();
   renderYearIndex();
+  // 数据一进来就自动结算 + 自动出推荐（不用点任何按钮）
+  try { setTimeout(function(){ try { if (typeof ledgerRun === "function" && !LEDGER.busy) ledgerRun(false); } catch(e) {} }, 350); } catch(e) {}
 }
 
 // 汇总每年换肖段：{year, yz, issue}
@@ -689,7 +759,9 @@ function renderLatest(){
   const tail = d.special % 10;
   const head = Math.floor(d.special / 10);
   let html = "";
-  html += "<div style='margin-bottom:8px;'><span class='badge ok' style='font-size:12px;'>第 " + d.issue + " 期</span>";
+  const nextIssue = pad3(parseInt(d.issue, 10) + 1);
+  html += "<div style='margin-bottom:8px;'><span class='badge ok' style='font-size:12px;'>最新一期：第 " + d.issue + " 期</span>";
+  html += " <span class='badge' style='font-size:12px;background:#0ea5e9;color:#fff;'>下一期：第 " + nextIssue + " 期</span>";
   html += " <span style='color:var(--text-dim);'>特码 生肖：<b style='font-size:15px;color:#ef4444;'>" + z + "</b></span></div>";
   html += "<div style='display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;'>";
   d.normals.forEach(n => { html += ball(n, zodiacOf(n, lastIdx), false); });
@@ -952,6 +1024,8 @@ function renderDrawList() {
     const seg = Math.floor(d.special/10) + "段";
     const he = (Math.floor(d.special/10) + d.special%10) + "合";
     html += '<div class="draw-tail">' + size + " " + parity + "肖 " + seg + " " + he + "</div>";
+    // 自动属性条：每个号码的 生肖 / 波色 / 尾数 / 头数（数据一进来就自动算，无需任何按钮）
+    try { html += drawAttrsHtml(d, idx); } catch(e) {}
     row.innerHTML = html;
     list.appendChild(row);
   });
@@ -1969,6 +2043,34 @@ function ballChip(n, idx){
   return "<span style='display:inline-block;margin:2px;padding:3px 7px;border-radius:4px;background:" + bg + ";color:#fff;font-size:12px;'>" + pad2(n) + " " + a.zod + "</span>";
 }
 
+// ===== 顶部自动条：数据一载入就自动算好，直接显示，不用点任何按钮 =====
+function renderAutoBar(){
+  var bar = document.getElementById("auto-bar");
+  if (!bar) return;
+  var warn = "";
+  try {
+    var h = dataHealth(draws);
+    if (h.dup > 0) {
+      warn = "<span style='background:#7f1d1d;color:#fff;padding:2px 8px;border-radius:4px;margin-right:10px;'>⚠ 数据里有 " +
+        h.dup + " 条完全重复的记录（会把期号/生肖算乱）</span><a href='javascript:dedupeData()' style='color:#fca5a5;text-decoration:underline;margin-right:12px;'>一键去重</a>";
+    } else if (draws.length) {
+      warn = "<span style='color:#4ade80;margin-right:10px;'>✔ 数据自检正常（" + h.total + " 期，无重复）</span>";
+    }
+  } catch(e) {}
+  if (!LEDGER || !LEDGER.rows || !LEDGER.rows.length){
+    bar.innerHTML = warn; bar.style.display = warn ? "block" : "none"; return;
+  }
+  var last = LEDGER.rows[LEDGER.rows.length - 1];
+  var p18 = last.pred18 || last.pred;
+  var hits = LEDGER.rows.filter(function(r){ return r.hit; }).length;
+  var rate = (hits / LEDGER.rows.length * 100).toFixed(2);
+  bar.innerHTML = "<b style='color:#38bdf8;'>🤖 自动推荐（无需点按钮）</b>　" + warn + "最新 " + last.issue + " 期 → 下一期 " + pad3(parseInt(last.issue,10)+1) + " 期，覆盖 " + p18.length + " 码：" +
+    p18.map(function(n){ return infoChip(n, last.idx); }).join("") +
+    "<span style='color:#94a3b8;margin-left:10px;'>已自动结算 " + LEDGER.rows.length + " 期｜前18码命中 " + hits +
+    " 期（" + rate + "%）｜随机约 36.73%</span>";
+  bar.style.display = "block";
+}
+
 function ledgerRender(){
   var stat = document.getElementById("ledger-stat"), tb = document.getElementById("ledger-table");
   if (!stat) return;
@@ -2001,6 +2103,7 @@ function ledgerRender(){
   });
   html += "</table>";
   tb.innerHTML = html;
+  try { renderAutoBar(); } catch(e) {}
 }
 
 function ledgerExport(){
