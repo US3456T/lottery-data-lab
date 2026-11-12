@@ -73,6 +73,13 @@ button.primary:hover { background: var(--accent); }
 </header>
 <div id="auto-bar" style="display:none;padding:6px 12px;background:#0f172a;border-bottom:1px solid #334155;font-size:12px;color:#e2e8f0;line-height:1.9;"></div>
 
+<!-- 右下角浮动：一滑到底 / 回顶部 / 显示期数 -->
+<div id="scroll-fab" style="position:fixed;right:12px;bottom:90px;z-index:9999;display:flex;flex-direction:column;gap:6px;align-items:stretch;">
+  <button onclick="scrollPane('bottom')" title="一滑到底" style="background:#2563eb;color:#fff;border:none;border-radius:18px;padding:10px 14px;font-size:13px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3);">⬇ 到底</button>
+  <button onclick="scrollPane('top')" title="回到顶部" style="background:#475569;color:#fff;border:none;border-radius:18px;padding:10px 14px;font-size:13px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3);">⬆ 到顶</button>
+  <button onclick="cycleViewLimit()" id="limit-btn" title="切换显示期数" style="background:#0f766e;color:#fff;border:none;border-radius:18px;padding:10px 12px;font-size:12px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3);">显示200期</button>
+</div>
+
 <main>
   <aside>
     <div class="aside-title">AI 工具（20 个）</div>
@@ -745,6 +752,36 @@ function drawZodiac(d, idx){
 }
 
 // 显示最新一期：号码球 + 生肖 + 属性标签
+// ===== 右下角：一滑到底 / 回顶部 / 显示期数切换 =====
+window.VIEW_LIMIT = 200;
+function scrollPane(where){
+  var panes = document.querySelectorAll(".tab-pane");
+  var target = null;
+  panes.forEach(function(p){ if (p.classList.contains("active")) target = p; });
+  var el = (target && target.querySelector("#draw-list")) || null;
+  var scroller = document.scrollingElement || document.documentElement;
+  var y = where === "bottom" ? scroller.scrollHeight : 0;
+  try {
+    if (el && el.scrollHeight > y) {
+      el.scrollTop = where === "bottom" ? el.scrollHeight : 0;
+    }
+    window.scrollTo({ top: y, behavior: "auto" });
+  } catch(e) {
+    window.scrollTo(0, y);
+  }
+}
+function cycleViewLimit(){
+  var order = [200, 100, 500, 0];
+  var cur = window.VIEW_LIMIT;
+  var i = order.indexOf(cur);
+  window.VIEW_LIMIT = order[(i + 1) % order.length];
+  var btn = document.getElementById("limit-btn");
+  if (btn) btn.textContent = window.VIEW_LIMIT ? ("显示" + window.VIEW_LIMIT + "期") : "显示全部";
+  try { localStorage.setItem("view_limit", window.VIEW_LIMIT); } catch(e) {}
+  renderDrawList();
+  scrollPane("top");
+}
+
 function renderLatest(){
   const bodies = [document.getElementById("latest-body"), document.getElementById("latest-body2")].filter(Boolean);
   if(!bodies.length) return;
@@ -984,6 +1021,9 @@ function renderDrawList() {
   const list = document.getElementById("draw-list");
   if(!list) return;
   list.innerHTML = "";
+  // 只渲染最近 N 期（低配电脑不卡；0=全部）
+  var startAt = 0;
+  if (window.VIEW_LIMIT > 0 && draws.length > window.VIEW_LIMIT) startAt = draws.length - window.VIEW_LIMIT;
   let lastYearZodiac = "";
   let lastYearKey = "";
   let yearBoundaryCount = 0;
@@ -991,7 +1031,14 @@ function renderDrawList() {
     "2010年","2011年","2012年","2013年","2014年","2015年","2016年","2017年","2018年","2019年",
     "2020年","2021年","2022年","2023年","2024年","2025年","2026年"];
 
-  draws.forEach((d, idx) => {
+  if (startAt > 0) {
+    const tip = document.createElement("div");
+    tip.style.cssText = "text-align:center;font-size:12px;color:#666;background:#fff3cd;padding:6px;margin:6px 0;border-radius:4px;";
+    tip.textContent = "只显示最近 " + (draws.length - startAt) + " 期（共 " + draws.length + " 期）· 点右下角可切换显示全部";
+    list.appendChild(tip);
+  }
+  for (let idx = startAt; idx < draws.length; idx++) {
+    const d = draws[idx];
     // 检测年份生肖变化
     let yz = "马";
     for(const b of yearBoundaries){ if(idx>=b.startIdx) yz=b.zodiac; }
@@ -1028,7 +1075,7 @@ function renderDrawList() {
     try { html += drawAttrsHtml(d, idx); } catch(e) {}
     row.innerHTML = html;
     list.appendChild(row);
-  });
+  }
 }
 
 // 一键载入网页里自带的真实记录
@@ -1372,6 +1419,15 @@ function loadMemo(){
 document.addEventListener("input", e => { if(e.target && MEMO_IDS.indexOf(e.target.id) >= 0){ if(e.target.id === "triggers") triggerManual = true; saveMemo(); } });
 document.addEventListener("change", e => { if(e.target && MEMO_IDS.indexOf(e.target.id) >= 0) saveMemo(); });
 loadMemo();
+// 恢复“显示期数”设置
+try {
+  var vl = localStorage.getItem("view_limit");
+  if (vl !== null) {
+    window.VIEW_LIMIT = parseInt(vl, 10) || 0;
+    var lb = document.getElementById("limit-btn");
+    if (lb) lb.textContent = window.VIEW_LIMIT ? ("显示" + window.VIEW_LIMIT + "期") : "显示全部";
+  }
+} catch(e) {}
 
 // 从浏览器读取历史数据，刷新后不会清空
 try {
