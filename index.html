@@ -106,7 +106,7 @@ button.primary:hover { background: var(--accent); }
       <!-- 一键载入内置真实记录（回测1500期：两套命中率都贴近随机基线，无显著差异） -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
         <button class="primary" onclick="loadRemoteData('hk.txt','香港记录')">载入香港记录（3682期）</button>
-        <button class="primary" onclick="loadRemoteData('mo.txt','澳门记录')">载入澳门记录（2362期）</button>
+        <button class="primary" onclick="loadRemoteData('mo.txt','澳门记录')">载入澳门记录（2367期）</button>
         <span class="hint" style="font-size:11px;color:var(--text-dim);">回测1500期：香港 24码50.1% / 12码24.1% / 10肖83.6%；澳门 49.5% / 25.8% / 84.7%；随机基线 49.0% / 24.5% / 83.3%</span>
       </div>
       <!-- 最新一期（记忆） -->
@@ -902,12 +902,13 @@ function renderDrawList() {
 
 // 一键载入网页里自带的真实记录
 function loadRemoteData(url, name){
-  fetch(url).then(r => r.text()).then(t => {
+  // 加时间戳，避免浏览器/CDN 缓存拿到旧文件（曾出现缓存导致解析 0 期）
+  const bust = url + (url.indexOf("?") >= 0 ? "&" : "?") + "cb=" + Date.now();
+  fetch(bust).then(r => r.text()).then(t => {
     const d = parseTxt(t);
-    if(!d.length){ alert("载入失败：没解析到数据"); return; }
-    setData(d);
-    alert("已载入" + name + "，共 " + d.length + " 期（下次打开自动恢复）");
-  }).catch(e => alert("载入失败：" + e.message));
+    if(!d.length){ alert("载入失败：没解析到数据（" + url + "）"); return; }
+    setData(d); alert("已载入" + name + "，共 " + d.length + " 期（下次打开自动恢复）");
+  }).catch(e => alert("载入失败：" + e.message + "\n请按 Ctrl+Shift+R 刷新后再试"));
 }
 
 function importData(){
