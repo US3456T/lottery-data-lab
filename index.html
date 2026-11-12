@@ -93,6 +93,7 @@ button.primary:hover { background: var(--accent); }
       <button class="tab" data-tab="backtest">🔁 全历史回测</button>
       <button class="tab" data-tab="arena">🧪 AI 竞技评测</button>
       <button class="tab" data-tab="ledger">🧾 预测流水</button>
+      <button class="tab" data-tab="source">📡 开奖数据源</button>
       <button class="tab active" data-tab="chat">🤖 AI 对话</button>
     </nav>
 
@@ -200,6 +201,27 @@ button.primary:hover { background: var(--accent); }
       </div>
       <div id="arena-progress" style="font-size:12px;color:var(--accent);padding:4px 0;"></div>
       <div id="arena-out" class="report"></div>
+    </div>
+
+    <div class="tab-pane" id="pane-source">
+      <div class="row"><span class="hint">这里放“去哪看开奖记录”。网址随时可以改、可以删、可以加新的——某个站打不开，就换一个，历史数据不受影响。</span></div>
+      <div id="src-list" class="report" style="padding:8px;"></div>
+      <div class="row">
+        <input id="src-name" placeholder="名称，例如：香港六合彩开奖记录" style="width:200px;">
+        <input id="src-url" placeholder="https://…" style="width:340px;">
+        <button onclick="srcAdd()">添加/保存</button>
+        <button onclick="srcReset()">恢复默认</button>
+      </div>
+      <hr>
+      <div class="row"><b>把看到的开奖号码粘进来（只认号码，不认生肖）</b></div>
+      <div class="row"><span class="hint">一行一期，例如：314期 24 39 21 27 35 06 T 44 ；也可以直接粘 “314 24 39 21 27 35 06 44”。站上的生肖文字会自动忽略。</span></div>
+      <textarea id="batch-in" style="width:100%;height:110px;" placeholder="314期 24 39 21 27 35 06 T 44
+315期 07 12 18 26 33 41 T 09"></textarea>
+      <div class="row">
+        <button class="primary" onclick="batchImport()">解析并追加进历史记录</button>
+        <label style="margin-left:8px;font-size:12px;"><input type="checkbox" id="batch-nn" checked> 同时喂给我的神经网络（记流水）</label>
+      </div>
+      <div id="src-msg" class="report" style="padding:8px;"></div>
     </div>
 
     <div class="tab-pane" id="pane-ledger">
@@ -1558,6 +1580,96 @@ function arenaSave(){
   txt += "\n理论随机值：2.04 / 12.24 / 36.73（%）\n";
   saveTextFile(txt, "AI竞技评测结果_" + Date.now() + ".txt");
 }
+// ===== 开奖数据源：网址可换 + 批量粘贴入库（只认号码） =====
+var SRC_DEFAULT = [
+  { name: "香港赛马会 · 官方开奖结果", url: "https://bet.hkjc.com/marksix/results?lang=ch" },
+  { name: "开奖记录导航（香港/澳门）", url: "https://dgq1kefz.0149q149.app:2026/01493344.app#01493344" },
+  { name: "香港六合彩 · 最近十期", url: "https://www.stheadline.com/zh-hans/society/3636345/" }
+];
+function srcLoad(){
+  try {
+    var s = localStorage.getItem("ai_sources");
+    if (s) return JSON.parse(s);
+  } catch(e) {}
+  return SRC_DEFAULT.slice();
+}
+function srcStore(list){ try { localStorage.setItem("ai_sources", JSON.stringify(list)); } catch(e) {} }
+function srcRender(){
+  var box = document.getElementById("src-list");
+  if (!box) return;
+  var list = srcLoad();
+  var html = "<table style='width:100%;font-size:12px;border-collapse:collapse;'>";
+  list.forEach(function(s, i){
+    html += "<tr style='border-bottom:1px solid #eee;'><td style='padding:5px;'>" + s.name + "</td>"
+          + "<td style='padding:5px;color:#666;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + s.url + "</td>"
+          + "<td style='padding:5px;white-space:nowrap;'><button onclick='srcOpen(" + i + ")'>打开</button> "
+          + "<button onclick='srcDel(" + i + ")'>删</button></td></tr>";
+  });
+  html += "</table>";
+  box.innerHTML = html;
+}
+function srcOpen(i){
+  var s = srcLoad()[i];
+  if (!s) return;
+  window.open(s.url, "_blank");
+}
+function srcDel(i){
+  var list = srcLoad();
+  if (!list[i]) return;
+  if (!confirm("删掉这条数据源？")) return;
+  list.splice(i, 1);
+  srcStore(list); srcRender();
+}
+function srcAdd(){
+  var n = (document.getElementById("src-name").value || "").trim();
+  var u = (document.getElementById("src-url").value || "").trim();
+  if (!n || !u){ alert("名称和网址都要填"); return; }
+  if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+  var list = srcLoad();
+  var hit = -1;
+  for (var i = 0; i < list.length; i++){ if (list[i].name === n) { hit = i; break; } }
+  if (hit >= 0) list[hit].url = u; else list.push({ name: n, url: u });
+  srcStore(list); srcRender();
+  document.getElementById("src-name").value = ""; document.getElementById("src-url").value = "";
+}
+function srcReset(){
+  if (!confirm("恢复成默认的三条数据源？")) return;
+  try { localStorage.removeItem("ai_sources"); } catch(e) {}
+  srcRender();
+}
+
+function batchImport(){
+  var txt = (document.getElementById("batch-in").value || "").trim();
+  var msg = document.getElementById("src-msg");
+  if (!txt){ msg.innerHTML = "请先粘贴开奖内容。"; return; }
+  var lines = txt.split(/\r?\n/), added = 0, replaced = 0, failed = 0, detail = [];
+  for (var li = 0; li < lines.length; li++){
+    var line = lines[li].trim();
+    if (!line) continue;
+    var parsed = (typeof parseTxt === "function") ? parseTxt(line) : [];
+    if (!parsed.length){
+      var nums = line.replace(/[^\d\s]/g, " ").trim().split(/\s+/).map(Number).filter(function(v){ return v >= 1 && v <= 49; });
+      if (nums.length >= 7){
+        parsed = [{ issue: String(nums[0]).padStart(3, "0"), date: "", normals: nums.slice(1, 7), special: nums[7] !== undefined ? nums[7] : nums[6] }];
+      }
+    }
+    if (!parsed.length){ failed++; detail.push("第 " + (li + 1) + " 行没看懂：已跳过"); continue; }
+    var one = parsed[parsed.length - 1];
+    if (!one.yearZodiac && draws.length) one.yearZodiac = draws[draws.length - 1].yearZodiac || "";
+    var idx = -1;
+    for (var d = 0; d < draws.length; d++){ if (String(draws[d].issue) === String(one.issue)) { idx = d; break; } }
+    if (idx >= 0){ draws[idx] = one; replaced++; } else { draws.push(one); added++; }
+  }
+  if (!added && !replaced){ msg.innerHTML = "一条都没能识别。格式参考：314期 24 39 21 27 35 06 T 44"; return; }
+  setData(draws);
+  msg.innerHTML = "已追加 " + added + " 期、覆盖 " + replaced + " 期" + (failed ? "，跳过 " + failed + " 行" : "") + "。号码已入库，生肖文字全部忽略。"
+    + (detail.length ? "<br><span style='color:#b45309'>" + detail.join("<br>") + "</span>" : "");
+  document.getElementById("batch-in").value = "";
+  if (document.getElementById("batch-nn") && document.getElementById("batch-nn").checked){
+    setTimeout(function(){ if (typeof ledgerRun === "function") ledgerRun(false); }, 800);
+  }
+}
+
 // ===== 预测流水：模型长期记忆 + 每期自动结算 =====
 var LEDGER = { model: null, rows: [], sig: "", busy: false, timer: null };
 
@@ -1705,7 +1817,7 @@ function ledgerAutoCheck(){
   } catch(e) {}
 }
 document.addEventListener("DOMContentLoaded", function(){
-  ledgerLoad(); ledgerRender();
+  ledgerLoad(); ledgerRender(); srcRender();
   setTimeout(ledgerAutoCheck, 3000);
   setInterval(ledgerAutoCheck, 5000);
 });
