@@ -818,96 +818,56 @@ function renderAutoPage(){
   var p6 = row.pred;
   var idx = row.idx;
 
-  function chip(n, big){
-    var a = numInfo(n, idx);
-    var bg = a.color === "red" ? "#e11d48" : (a.color === "blue" ? "#2563eb" : "#16a34a");
-    return "<span style='display:inline-block;margin:2px 3px;padding:" + (big ? "4px 8px" : "2px 6px") +
-      ";border-radius:6px;background:" + bg + ";color:#fff;font-size:" + (big ? "17px" : "13px") + ";font-weight:700;'>" + pad2(n) + "</span>";
-  }
-  function tbl(headers, rowsHtml){
-    return "<table style='width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px;'><thead><tr style='background:#f1f5f9;color:#334155;'>" +
-      headers.map(function(t){ return "<th style='padding:6px;border-bottom:1px solid #e2e8f0;font-weight:600;'>" + t + "</th>"; }).join("") +
-      "</tr></thead><tbody>" + rowsHtml + "</tbody></table>";
-  }
   function secs(title, sub){
-    return "<div style='font-size:15px;font-weight:700;color:#0f172a;margin:14px 0 4px;'>" + title + "</div>" +
+    return "<div style='font-size:15px;font-weight:800;color:#0f172a;margin:14px 0 4px;'>" + title + "</div>" +
       (sub ? "<div style='font-size:12px;color:#64748b;margin-bottom:6px;'>" + sub + "</div>" : "");
+  }
+  function pre(txt){
+    return "<pre style='margin:0;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;" +
+      "font-family:Consolas,\"Courier New\",monospace;font-size:13.5px;line-height:1.85;white-space:pre-wrap;user-select:text;color:#1f2937;'>" + txt + "</pre>";
+  }
+  function oneLine(n, mark){
+    var a = numInfo(n, idx);
+    return pad2(n) + "　" + a.zod + "　" + a.colorCn + "　尾" + a.tail + "　" + a.head + "头　合" + a.sum + (mark ? "　" + mark : "");
   }
   var body = "";
 
-  // ① 一行一个号码（18 行，互不重复）
-  body += secs("① 号码明细（一行一个号，共 " + p18.length + " 个，互不重复）", "按推荐顺序排，前 6 个是重点号");
-  body += tbl(["序号", "号码", "生肖", "波色", "尾数", "头数", "合数", "大小", "单双", "标记"],
-    p18.map(function(n, i){
-      var a = numInfo(n, idx);
-      var sp = a.zod === last.specialZodiac ? "上期特码肖" : "—";
-      return "<tr style='border-bottom:1px solid #eee;'><td style='padding:5px;text-align:center;color:#888;'>" + (i+1) + "</td>" +
-        "<td style='text-align:center;'>" + chip(n, i < 6) + "</td>" +
-        "<td style='text-align:center;font-weight:700;'>" + a.zod + "</td>" +
-        "<td style='text-align:center;'>" + a.colorCn + "</td>" +
-        "<td style='text-align:center;'>" + a.tail + "</td><td style='text-align:center;'>" + a.head + "</td>" +
-        "<td style='text-align:center;'>" + a.sum + "</td><td style='text-align:center;'>" + a.big + "</td>" +
-        "<td style='text-align:center;'>" + a.odd + "</td>" +
-        "<td style='text-align:center;font-size:11px;color:" + (i < 6 ? "#b91c1c" : "#aaa") + ";'>" + (i < 6 ? "重点" : sp) + "</td></tr>";
-    }).join(""));
+  // ① 一行一个号码（互不重复，纯文字）
+  body += secs("① 号码明细（一行一个号，共 " + p18.length + " 个，互不重复）", "前 6 个是重点号");
+  body += pre(p18.map(function(n, i){ return oneLine(n, i < 6 ? "重点" : ""); }).join("\n"));
 
-  // ② 生肖归生肖（每个生肖一行）
+  // ② 生肖
   var ZS12 = ["鼠","牛","虎","兔","龙","蛇","马","羊","猴","鸡","狗","猪"];
-  body += secs("② 按生肖归组（同一个生肖的号排在一起）", "每个号码只属于一个生肖，不会重复出现");
-  body += tbl(["生肖", "该生肖的号码", "个数"], ZS12.map(function(z){
+  body += secs("② 按生肖归组", "一个号码只出现在一个生肖里，不重复");
+  body += pre(ZS12.map(function(z){
     var ns = p18.filter(function(n){ return numInfo(n, idx).zod === z; });
-    return "<tr style='border-bottom:1px solid #eee;'><td style='text-align:center;padding:6px;font-weight:700;font-size:15px;'>" + z + "</td>" +
-      "<td style='padding:6px;'>" + (ns.length ? ns.map(function(n){ return chip(n, false); }).join("") : "<span style='color:#cbd5e1;'>（本期推荐里没有）</span>") + "</td>" +
-      "<td style='text-align:center;color:#64748b;'>" + ns.length + "</td></tr>";
-  }).join(""));
+    return z + "（" + ns.length + "个）：" + (ns.length ? ns.map(pad2).join(" ") : "—");
+  }).join("\n"));
 
-  // ③ 尾数归尾数
-  body += secs("③ 按尾数归组（尾数 0～9）", "尾数＝号码个位");
-  body += tbl(["尾数", "该尾数的号码", "个数"], [0,1,2,3,4,5,6,7,8,9].map(function(t){
+  // ③ 尾数
+  body += secs("③ 按尾数归组", "尾数＝号码个位");
+  body += pre([0,1,2,3,4,5,6,7,8,9].map(function(t){
     var ns = p18.filter(function(n){ return (n % 10) === t; });
-    return "<tr style='border-bottom:1px solid #eee;'><td style='text-align:center;padding:6px;font-weight:700;'>尾" + t + "</td>" +
-      "<td style='padding:6px;'>" + (ns.length ? ns.map(function(n){ return chip(n, false); }).join("") : "<span style='color:#cbd5e1;'>—</span>") + "</td>" +
-      "<td style='text-align:center;color:#64748b;'>" + ns.length + "</td></tr>";
-  }).join(""));
+    return "尾" + t + "（" + ns.length + "个）：" + (ns.length ? ns.map(pad2).join(" ") : "—");
+  }).join("\n"));
 
-  // ④ 波色归波色
+  // ④ 波色
   body += secs("④ 按波色归组", "红波 / 蓝波 / 绿波");
-  body += tbl(["波色", "该波色的号码", "个数"], [["red","红波"],["blue","蓝波"],["green","绿波"]].map(function(p){
+  body += pre([["red","红波"],["blue","蓝波"],["green","绿波"]].map(function(p){
     var ns = p18.filter(function(n){ return numInfo(n, idx).color === p[0]; });
-    return "<tr style='border-bottom:1px solid #eee;'><td style='text-align:center;padding:6px;font-weight:700;color:" +
-      (p[0]==="red"?"#e11d48":p[0]==="blue"?"#2563eb":"#16a34a") + ";'>" + p[1] + "</td>" +
-      "<td style='padding:6px;'>" + (ns.length ? ns.map(function(n){ return chip(n, false); }).join("") : "<span style='color:#cbd5e1;'>—</span>") + "</td>" +
-      "<td style='text-align:center;color:#64748b;'>" + ns.length + "</td></tr>";
-  }).join(""));
+    return p[1] + "（" + ns.length + "个）：" + (ns.length ? ns.map(pad2).join(" ") : "—");
+  }).join("\n"));
 
-  // ⑤ 头数归头数
-  body += secs("⑤ 按头数归组（头数 0～4）", "头数＝号码十位");
-  body += tbl(["头数", "该头数的号码", "个数"], [0,1,2,3,4].map(function(t){
+  // ⑤ 头数
+  body += secs("⑤ 按头数归组", "头数＝号码十位");
+  body += pre([0,1,2,3,4].map(function(t){
     var ns = p18.filter(function(n){ return Math.floor(n / 10) === t; });
-    return "<tr style='border-bottom:1px solid #eee;'><td style='text-align:center;padding:6px;font-weight:700;'>" + t + "头</td>" +
-      "<td style='padding:6px;'>" + (ns.length ? ns.map(function(n){ return chip(n, false); }).join("") : "<span style='color:#cbd5e1;'>—</span>") + "</td>" +
-      "<td style='text-align:center;color:#64748b;'>" + ns.length + "</td></tr>";
-  }).join(""));
+    return t + "头（" + ns.length + "个）：" + (ns.length ? ns.map(pad2).join(" ") : "—");
+  }).join("\n"));
 
   // ⑥ 重点 6 码
-  body += secs("⑥ 重点 6 码（最看好的 6 个）", "历史命中约 12.24%，与随机同水平");
-  body += tbl(["序号", "号码", "生肖", "波色", "尾数", "头数", "合数", "大小单双"],
-    p6.map(function(n, i){
-      var a = numInfo(n, idx);
-      return "<tr style='border-bottom:1px solid #eee;'><td style='text-align:center;color:#888;'>" + (i+1) + "</td>" +
-        "<td style='text-align:center;'>" + chip(n, true) + "</td>" +
-        "<td style='text-align:center;font-weight:700;'>" + a.zod + "</td><td style='text-align:center;'>" + a.colorCn + "</td>" +
-        "<td style='text-align:center;'>" + a.tail + "</td><td style='text-align:center;'>" + a.head + "</td>" +
-        "<td style='text-align:center;'>" + a.sum + "</td><td style='text-align:center;'>" + a.big + a.odd + "</td></tr>";
-    }).join(""));
-
-  // ⑦ 结算成绩
-  var hits = LEDGER.rows.filter(function(r){ return r.hit; }).length;
-  var rate = (hits / LEDGER.rows.length * 100).toFixed(2);
-  body += secs("⑦ 自动结算成绩");
-  body += "<div style='background:#0f172a;color:#e2e8f0;border-radius:8px;padding:12px;font-size:13px;line-height:1.9;'>" +
-    "已自动结算 <b>" + LEDGER.rows.length + "</b> 期 ｜ 前18码命中 <b>" + hits + "</b> 期（<b>" + rate + "%</b>）｜ 随机理论值 36.73%<br>" +
-    "<span style='color:#94a3b8;font-size:12px;'>18 码覆盖是唯一稳定的用法；单点一个特码号没有任何模型能超过 2% 左右。</span></div>";
+  body += secs("⑥ 重点 6 码", "只写号码和属性，不掺其他数字");
+  body += pre(p6.map(function(n, i){ return oneLine(n, "重点" + (i + 1)); }).join("\n"));
 
   box.innerHTML = "<div style='display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;'>" +
     "<div style='background:#0ea5e9;color:#fff;padding:8px 14px;border-radius:8px;font-size:15px;'><b>最新一期：第 " + last.issue + " 期</b></div>" +
@@ -2329,11 +2289,11 @@ function ledgerUsefulHtml(){
   html += "<div style='font-weight:800;margin-bottom:4px;'>最新开奖（第 " + last.issue + " 期）7 个号码</div>";
   html += "<pre style='margin:0 0 10px;font-family:Consolas,monospace;font-size:13px;line-height:1.8;white-space:pre-wrap;user-select:text;'>";
   html += "号码： " + n7.slice(0,6).map(pad2).join(" ") + " ｜ 特码 " + pad2(last.special) + "\n";
-  html += "生肖： " + n7.map(function(x){ return zodiacOf(x, idx); }).join(" ") + " ｜ " + drawZodiac(last, idx) + "\n";
-  html += "波色： " + n7.map(ballColor).join(" ") + " ｜ " + ballColor(last.special) + "\n";
-  html += "尾数： " + n7.map(function(x){ return x % 10; }).join(" ") + " ｜ " + (last.special % 10) + "\n";
-  html += "头数： " + n7.map(function(x){ return Math.floor(x / 10); }).join(" ") + " ｜ " + Math.floor(last.special / 10) + "\n";
-  html += "合数： " + n7.map(function(x){ return Math.floor(x / 10) + x % 10; }).join(" ") + " ｜ " + (Math.floor(last.special / 10) + last.special % 10);
+  html += "生肖： " + n7.slice(0,6).map(function(x){ return zodiacOf(x, idx); }).join(" ") + " ｜ " + drawZodiac(last, idx) + "\n";
+  html += "波色： " + n7.slice(0,6).map(ballColor).join(" ") + " ｜ " + ballColor(last.special) + "\n";
+  html += "尾数： " + n7.slice(0,6).map(function(x){ return x % 10; }).join(" ") + " ｜ " + (last.special % 10) + "\n";
+  html += "头数： " + n7.slice(0,6).map(function(x){ return Math.floor(x / 10); }).join(" ") + " ｜ " + Math.floor(last.special / 10) + "\n";
+  html += "合数： " + n7.slice(0,6).map(function(x){ return Math.floor(x / 10) + x % 10; }).join(" ") + " ｜ " + (Math.floor(last.special / 10) + last.special % 10);
   html += "</pre>";
   // 24 / 18 / 12 三档
   [24, 18, 12].forEach(function(k){
