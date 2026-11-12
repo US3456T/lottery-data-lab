@@ -74,13 +74,6 @@ button.primary:hover { background: var(--accent); }
 <!-- 顶部自动条已移除：推荐内容全部搬到「📋 推荐分组」页面 -->
 <div id="auto-bar" style="display:none;"></div>
 
-<!-- 右下角浮动：一滑到底 / 回顶部 / 显示期数 -->
-<div id="scroll-fab" style="position:fixed;right:12px;bottom:90px;z-index:9999;display:flex;flex-direction:column;gap:6px;align-items:stretch;">
-  <button onclick="scrollPane('bottom')" title="一滑到底" style="background:#2563eb;color:#fff;border:none;border-radius:18px;padding:10px 14px;font-size:13px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3);">⬇ 到底</button>
-  <button onclick="scrollPane('top')" title="回到顶部" style="background:#475569;color:#fff;border:none;border-radius:18px;padding:10px 14px;font-size:13px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3);">⬆ 到顶</button>
-  <button onclick="cycleViewLimit()" id="limit-btn" title="切换显示期数" style="background:#0f766e;color:#fff;border:none;border-radius:18px;padding:10px 12px;font-size:12px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3);">显示200期</button>
-</div>
-
 <main>
   <aside>
     <div class="aside-title">AI 工具（20 个）</div>
@@ -1181,21 +1174,18 @@ function drawTextBlock(d, idx, yz){
     zs.push(z);
     cs.push(ballColor(n));
   }
-  var p2 = pad2;
+  // 统一文本块：一行一件事，越短越好看；香港澳门同一套
   var head = "第 " + d.issue + " 期" + (d.year ? " · " + d.year + " 年" : (yz ? " · " + yz + " 年" : ""));
-  // 固定宽度对齐：数字补空格到 3 位，中文补全角空格
-  var num = function(v){ var s = String(v); return "  " + s; };
-  var cn2 = function(v){ var s = String(v); return s + (s.length === 1 ? "　" : ""); };
+  var p2 = pad2;
   var L = [];
-  L.push("号码：" + n7.slice(0,6).map(function(n){ return " " + p2(n); }).join(" ") + "  ｜ 特码 " + p2(d.special));
-  L.push("生肖：" + zs.slice(0,6).map(function(z){ return " " + cn2(z); }).join("") + " ｜ " + zs[6]);
-  L.push("波色：" + cs.slice(0,6).map(function(c){ return " " + cn2(c) + "波"; }).join("") + " ｜ " + cs[6] + "波");
-  L.push("尾数：" + n7.slice(0,6).map(function(n){ return "  " + (n % 10); }).join(" ") + "  ｜ " + (d.special % 10));
-  L.push("头数：" + n7.slice(0,6).map(function(n){ return "  " + Math.floor(n / 10); }).join(" ") + "  ｜ " + Math.floor(d.special / 10));
-  var hs = function(n){ var s = String(Math.floor(n / 10) + n % 10); return " " + (s.length === 1 ? " " + s : s); };
-  L.push("合数：" + n7.slice(0,6).map(hs).join(" ") + "  ｜ " + (Math.floor(d.special / 10) + d.special % 10));
-  L.push("大小：" + n7.slice(0,6).map(function(n){ return " " + (n >= 25 ? "大" : "小") + "　"; }).join("") + " ｜ " + (d.special >= 25 ? "大" : "小"));
-  L.push("单双：" + n7.slice(0,6).map(function(n){ return " " + ((n % 2) ? "单" : "双") + "　"; }).join("") + " ｜ " + ((d.special % 2) ? "单" : "双"));
+  L.push("号码： " + n7.slice(0,6).map(p2).join(" ") + " ｜ 特码 " + p2(d.special));
+  L.push("生肖： " + zs.slice(0,6).join(" ") + " ｜ " + zs[6]);
+  L.push("波色： " + cs.slice(0,6).join(" ") + " ｜ " + cs[6] + "（红/蓝/绿）");
+  L.push("尾数： " + n7.slice(0,6).map(function(n){ return String(n % 10); }).join(" ") + " ｜ " + (d.special % 10));
+  L.push("头数： " + n7.slice(0,6).map(function(n){ return String(Math.floor(n / 10)); }).join(" ") + " ｜ " + Math.floor(d.special / 10));
+  L.push("合数： " + n7.slice(0,6).map(function(n){ return String(Math.floor(n / 10) + n % 10); }).join(" ") + " ｜ " + (Math.floor(d.special / 10) + d.special % 10));
+  L.push("大小： " + n7.slice(0,6).map(function(n){ return (n >= 25 ? "大" : "小"); }).join(" ") + " ｜ " + (d.special >= 25 ? "大" : "小"));
+  L.push("单双： " + n7.slice(0,6).map(function(n){ return ((n % 2) ? "单" : "双"); }).join(" ") + " ｜ " + ((d.special % 2) ? "单" : "双"));
   return "<div style='font-weight:800;font-size:15px;color:#0f172a;margin-bottom:4px;'>" + head + "</div>" +
     "<pre style='margin:0;font-family:Consolas,\"Courier New\",monospace;font-size:13.5px;line-height:1.75;white-space:pre-wrap;user-select:text;color:#1f2937;'>" +
     L.join("\n") + "</pre>";
@@ -1205,44 +1195,50 @@ function renderDrawList() {
   const list = document.getElementById("draw-list");
   if(!list) return;
   list.innerHTML = "";
-  // 只渲染最近 N 期（低配电脑不卡；0=全部）
-  var startAt = 0;
-  if (window.VIEW_LIMIT > 0 && draws.length > window.VIEW_LIMIT) startAt = draws.length - window.VIEW_LIMIT;
-  let lastYearZodiac = "";
-  let lastYearKey = "";
-  let yearBoundaryCount = 0;
+  window.DRAW_BATCH = 150;
+  window.SHOWN = Math.min(draws.length, window.DRAW_BATCH);
+  window.LAST_KEY = "";
+  // 最新一期在最上面，往下滑越滑越早；滑到底自动加载更早的
+  appendDrawRange(list, draws.length - 1, draws.length - window.SHOWN);
+  addDrawTip(list);
+}
+
+function addDrawTip(list){
+  var old = document.getElementById("draw-tip");
+  if (old) old.remove();
+  var tip = document.createElement("div");
+  tip.id = "draw-tip";
+  tip.style.cssText = "text-align:center;font-size:13px;color:#475569;background:#eef2f7;padding:10px;margin:8px 0;border-radius:6px;";
+  tip.textContent = window.SHOWN >= draws.length
+    ? "已显示全部 " + draws.length + " 期"
+    : "已显示最新 " + window.SHOWN + " / 共 " + draws.length + " 期 —— 继续往下滑，自动加载更早的期数";
+  list.appendChild(tip);
+}
+
+function appendDrawRange(list, fromIdx, toIdx){
   const YEAR_LIST = ["2000年","2001年","2002年","2003年","2004年","2005年","2006年","2007年","2008年","2009年",
     "2010年","2011年","2012年","2013年","2014年","2015年","2016年","2017年","2018年","2019年",
     "2020年","2021年","2022年","2023年","2024年","2025年","2026年"];
-
-  if (startAt > 0) {
-    const tip = document.createElement("div");
-    tip.style.cssText = "text-align:center;font-size:12px;color:#666;background:#fff3cd;padding:6px;margin:6px 0;border-radius:4px;";
-    tip.textContent = "只显示最近 " + (draws.length - startAt) + " 期（共 " + draws.length + " 期）· 点右下角可切换显示全部";
-    list.appendChild(tip);
-  }
-  for (let idx = startAt; idx < draws.length; idx++) {
+  for (let idx = fromIdx; idx >= toIdx; idx--) {
+    if (idx < 0 || idx >= draws.length) break;
     const d = draws[idx];
-    // 检测年份生肖变化
     let yz = "马";
     for(const b of yearBoundaries){ if(idx>=b.startIdx) yz=b.zodiac; }
     if(d.yearZodiac) yz = d.yearZodiac;
     const yearKey = (d.year ? d.year : "") + "-" + yz;
-    if (yearKey !== lastYearKey) {
+    if (yearKey !== window.LAST_KEY) {
       const sep = document.createElement("div");
       sep.style.cssText = "text-align:center;font-weight:700;color:#666;background:#e0e0e0;padding:6px;margin:8px 0;border-radius:4px;font-size:14px;letter-spacing:2px;";
-      const yearLabel = d.year ? (d.year + "年") : (YEAR_LIST[yearBoundaryCount] || (2000+yearBoundaryCount)+"年");
+      const yearLabel = d.year ? (d.year + "年") : (YEAR_LIST[0] || "");
       sep.textContent = "🔄 " + yearLabel + " 农历新年开始 → 从 " + d.issue + "期 起换 " + yz + "年 · " + yz + "的号码是 01 13 25 37 49";
       list.appendChild(sep);
-      lastYearZodiac = yz;
-      lastYearKey = yearKey;
-      yearBoundaryCount++;
+      window.LAST_KEY = yearKey;
     }
 
     const row = document.createElement("div");
     row.className = "draw-row";
     row.style.cssText = "display:block;padding:10px 12px;border-bottom:1px solid #e5e8ed;";
-    // 统一格式：一行一件事（号码/生肖/波色/尾数/头数/合数/大小/单双），香港澳门完全一样
+    // 统一格式：一行一件事（号码/生肖/波色/尾数/头数/合数），香港澳门完全一样
     let html = "";
     try {
       html = drawTextBlock(d, idx, yz);
@@ -1253,6 +1249,26 @@ function renderDrawList() {
     list.appendChild(row);
   }
 }
+
+function appendOlderDraws(){
+  var list = document.getElementById("draw-list");
+  if (!list || !draws.length) return;
+  if (window.SHOWN >= draws.length) return;
+  var fromIdx = draws.length - window.SHOWN - 1;
+  var toIdx = Math.max(0, draws.length - window.SHOWN - window.DRAW_BATCH);
+  var tip = document.getElementById("draw-tip");
+  var sep = document.createElement("div");
+  sep.id = "draw-sep-anchor";
+  if (tip) list.insertBefore(sep, tip); else list.appendChild(sep);
+  appendDrawRange(list, fromIdx, toIdx);
+  window.SHOWN = draws.length - toIdx;
+  addDrawTip(list);
+}
+
+window.addEventListener("scroll", function(){
+  if (window.SHOWN === undefined || window.SHOWN >= draws.length) return;
+  if (window.scrollY + window.innerHeight > document.body.scrollHeight - 600) appendOlderDraws();
+});
 
 // 一键载入网页里自带的真实记录
 function loadRemoteData(url, name){
@@ -2278,41 +2294,83 @@ function ballChip(n, idx){
 // ===== 顶部自动条：数据一载入就自动算好，直接显示，不用点任何按钮 =====
 function renderAutoBar(){ /* 顶部自动推荐条已移除，内容全部在「📋 推荐分组」页 */ }
 
+// 用最近数据给 1~49 打分，导出 24 / 18 / 12 三档（嵌套不重复）
+function scoreNums(){
+  var c50 = {}, tot = {}, seen = {};
+  var from = Math.max(0, draws.length - 60);
+  for (var i = from; i < draws.length; i++){
+    var d = draws[i];
+    var n7 = d.normals.concat([d.special]);
+    for (var k = 0; k < 7; k++){
+      var x = n7[k]; tot[x] = (tot[x] || 0) + 1; seen[x] = i;
+      if (i >= draws.length - 50) c50[x] = (c50[x] || 0) + 1;
+    }
+  }
+  var idx = draws.length - 1;
+  var out = [];
+  for (var n = 1; n <= 49; n++){
+    var miss = idx - (seen[n] === undefined ? from - 1 : seen[n]);
+    var sc = (c50[n] || 0) * 0.6 + (miss > 12 ? 5 : 0) + 0.1 * (tot[n] || 0);
+    out.push({ n: n, sc: sc, c50: c50[n] || 0, miss: miss });
+  }
+  out.sort(function(a, b){ return b.sc - a.sc; });
+  return out;
+}
+function numText(n, idx){
+  var a = numAttrs(n, idx);
+  return pad2(n) + "　" + a.zod + "　" + a.color + "　尾" + a.tail + "　" + (Math.floor(n / 10)) + "头　合" + a.sum;
+}
+function ledgerUsefulHtml(){
+  if (!draws.length) return "";
+  var idx = draws.length - 1;
+  var last = draws[idx];
+  var n7 = last.normals.concat([last.special]);
+  var sc = scoreNums();
+  var html = "<div class='report' style='padding:10px;font-size:13px;line-height:1.9;'>";
+  // 最新开奖 7 个号码（香港澳门都有）
+  html += "<div style='font-weight:800;margin-bottom:4px;'>最新开奖（第 " + last.issue + " 期）7 个号码</div>";
+  html += "<pre style='margin:0 0 10px;font-family:Consolas,monospace;font-size:13px;line-height:1.8;white-space:pre-wrap;user-select:text;'>";
+  html += "号码： " + n7.slice(0,6).map(pad2).join(" ") + " ｜ 特码 " + pad2(last.special) + "\n";
+  html += "生肖： " + n7.map(function(x){ return zodiacOf(x, idx); }).join(" ") + " ｜ " + drawZodiac(last, idx) + "\n";
+  html += "波色： " + n7.map(ballColor).join(" ") + " ｜ " + ballColor(last.special) + "\n";
+  html += "尾数： " + n7.map(function(x){ return x % 10; }).join(" ") + " ｜ " + (last.special % 10) + "\n";
+  html += "头数： " + n7.map(function(x){ return Math.floor(x / 10); }).join(" ") + " ｜ " + Math.floor(last.special / 10) + "\n";
+  html += "合数： " + n7.map(function(x){ return Math.floor(x / 10) + x % 10; }).join(" ") + " ｜ " + (Math.floor(last.special / 10) + last.special % 10);
+  html += "</pre>";
+  // 24 / 18 / 12 三档
+  [24, 18, 12].forEach(function(k){
+    html += "<div style='font-weight:800;margin-top:8px;color:#0f172a;'>下一期（第 " + pad3(parseInt(last.issue, 10) + 1) + " 期）" + k + " 码清单（" + k + " 个，互不重复）</div>";
+    html += "<pre style='margin:2px 0 8px;font-family:Consolas,monospace;font-size:13px;line-height:1.85;white-space:pre-wrap;user-select:text;'>";
+    html += sc.slice(0, k).map(function(o){ return numText(o.n, idx); }).join("\n");
+    html += "</pre>";
+  });
+  // 头数 / 尾数分组
+  var heads = [], tails = [];
+  for (var h = 0; h <= 4; h++){
+    var hs = []; for (var n = 1; n <= 49; n++){ if (Math.floor(n / 10) === h) hs.push(pad2(n)); }
+    heads.push(h + "头（" + hs.length + "个）：" + hs.join(" "));
+  }
+  for (var t = 0; t <= 9; t++){
+    var ts = []; for (var n2 = 1; n2 <= 49; n2++){ if (n2 % 10 === t) ts.push(pad2(n2)); }
+    tails.push("尾" + t + "（" + ts.length + "个）：" + ts.join(" "));
+  }
+  html += "<div style='font-weight:800;margin-top:8px;'>头数清单</div><pre style='margin:2px 0 8px;font-family:Consolas,monospace;font-size:13px;line-height:1.85;white-space:pre-wrap;'>" + heads.join("\n") + "</pre>";
+  html += "<div style='font-weight:800;margin-top:8px;'>尾数清单</div><pre style='margin:2px 0 0;font-family:Consolas,monospace;font-size:13px;line-height:1.85;white-space:pre-wrap;'>" + tails.join("\n") + "</pre>";
+  html += "</div>";
+  return html;
+}
+
 function ledgerRender(){
   var stat = document.getElementById("ledger-stat"), tb = document.getElementById("ledger-table");
   if (!stat) return;
-  var n = LEDGER.rows.length, hit6 = 0, hit18 = 0;
-  LEDGER.rows.forEach(function(r){ if (r.hitTop6) hit6++; if (r.hit) hit18++; });
-  var pct6 = n ? (hit6 / n * 100).toFixed(2) : "0.00";
-  var pct18 = n ? (hit18 / n * 100).toFixed(2) : "0.00";
-  var nTrained = LEDGER.model ? LEDGER.model.n : 0;
-  stat.innerHTML = "已结算 <b>" + n + "</b> 期｜前6码命中 " + hit6 + " 期（" + pct6 + "%，随机 12.24%）｜前18码命中 " + hit18 + " 期（" + pct18 + "%，随机 36.73%）｜模型已训练 " + nTrained + " 步";
-  if (!n){ tb.innerHTML = "<div style='color:#666;font-size:12px;padding:6px;'>还没有流水。载入数据后点「立即结算新期」，或等着它自动结算。</div>"; return; }
-  var last = LEDGER.rows[n-1];
-  var p18 = last.pred18 || last.pred;
-  var chips = p18.map(function(x){ return ballChip(x, last.idx); }).join("");
-  var sixAttr = last.pred.map(function(x){ return attrLine(x, last.idx); }).join("<br>");
-  var panel = "<div style='margin:8px 0 10px;padding:10px;border:1px solid #2563eb;border-radius:6px;background:#f8fbff;font-size:12px;line-height:1.8;'>"
-    + "<b>最新一期（第 " + last.issue + " 期）AI 给出的前18码</b>（点「立即结算新期」会重新算一遍）<br>"
-    + "<div style='margin:6px 0;'>" + chips + "</div>"
-    + "<b>其中前6码的属性（生肖按农历正月初一换肖）</b><br>" + sixAttr
-    + "<div style='color:#666;margin-top:6px;'>用法：这 18 个就是本期覆盖范围；前 6 个是重点号。实际开奖后，页面会自动把「预测 vs 实际」记进下面的表，命中率一直累计。</div></div>";
-  var rows = LEDGER.rows.slice(-40).reverse();
-  var html = panel + "<table style='width:100%;border-collapse:collapse;font-size:12px;'><tr style='background:#e0e0e0;'><th style='padding:4px;'>期号</th><th>AI 预测前6码</th><th>实际特码</th><th>前6码</th><th>前18码</th><th>日期</th></tr>";
-  rows.forEach(function(r){
-    var c1 = r.hitTop6 ? "#16a34a" : "#9ca3af";
-    var c2 = r.hit ? "#16a34a" : "#ef4444";
-    var sa = numAttrs(r.special, r.idx);
-    var sc = sa.color === "红波" ? "#e11d48" : (sa.color === "蓝波" ? "#2563eb" : "#16a34a");
-    html += "<tr style='border-bottom:1px solid #eee;'><td style='padding:4px;'>" + r.issue + "期</td><td style='text-align:center;'>" + r.pred.map(pad2).join(" ") + "</td>"
-      + "<td style='text-align:center;font-weight:700;'><span style='color:" + sc + ";'>" + pad2(r.special) + "</span><br><span style='font-size:10px;color:#666;font-weight:400;'>" + sa.color + " " + sa.zod + " 尾" + sa.tail + " 合" + sa.sum + " " + sa.big + sa.odd + "</span></td>"
-      + "<td style='text-align:center;color:" + c1 + ";'>" + (r.hitTop6 ? "中" : "—") + "</td><td style='text-align:center;color:" + c2 + ";font-weight:700;'>" + (r.hit ? "中" : "错") + "</td><td style='text-align:center;color:#888;'>" + r.t + "</td></tr>";
-  });
-  html += "</table>";
-  tb.innerHTML = html;
+  // 命中率/随机对比这类数字用户已确认没用 → 隐藏
+  stat.style.display = "none";
+  tb.style.display = "block";
+  tb.innerHTML = ledgerUsefulHtml();
   try { renderAutoBar(); } catch(e) {}
   try { renderAutoPage(); } catch(e) {}
 }
+
 
 function ledgerExport(){
   if (!LEDGER.rows.length){ alert("还没有流水可导出"); return; }
