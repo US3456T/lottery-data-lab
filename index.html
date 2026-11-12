@@ -115,6 +115,9 @@ button.primary:hover { background: var(--accent); }
         <div id="latest-body" style="font-size:12px;color:var(--text-dim);">还没有数据，上传或输入一次之后会自动记住，下次打开不用重新输入。</div>
       </div>
 
+      <!-- 农历换肖一览 -->
+      <div id="year-index" style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:12px;font-size:12px;display:none;"></div>
+
       <!-- 新增一期 -->
       <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;">
         <input id="new-draw" placeholder="输入新一期，例：314期 24 39 21 27 35 06 T 44"
@@ -411,6 +414,29 @@ function setData(d){
   document.getElementById("status-bar").textContent=`在线 · ${draws.length}期`;
   renderDrawList();
   renderLatest();
+  renderYearIndex();
+}
+
+// 农历换肖一览：哪一期开始换生肖和号码
+function renderYearIndex(){
+  const box = document.getElementById("year-index");
+  if(!box) return;
+  if(!draws.length){ box.style.display = "none"; return; }
+  const items = []; let prevKey = "";
+  draws.forEach((d, i) => {
+    let yz = d.yearZodiac || "";
+    if(!yz){ for(const b of yearBoundaries){ if(i>=b.startIdx) yz = b.zodiac; } }
+    const key = (d.year || "?") + "-" + yz;
+    if(key !== prevKey){ items.push({year: d.year || "", yz: yz || "?", issue: d.issue}); prevKey = key; }
+  });
+  let html = '<div style="font-weight:600;margin-bottom:6px;">📅 农历换肖一览（过年那期开始换生肖和号码）</div>';
+  items.forEach((it, k) => {
+    html += "<div style='padding:4px 0;border-bottom:1px dashed var(--border);'>" +
+      "<b>" + (it.year ? it.year + "年" : "第" + (k+1) + "段") + "</b> 农历" + it.yz + "年 · 从 <b style='color:#ef4444;'>" + it.issue + "期</b> 起换 · " +
+      it.yz + "的号码：01 13 25 37 49" + "</div>";
+  });
+  box.innerHTML = html;
+  box.style.display = "block";
 }
 
 // 特码生肖：历史记录里写了就照记录，没写才按号码推算
@@ -508,7 +534,7 @@ function renderDrawList() {
       const sep = document.createElement("div");
       sep.style.cssText = "text-align:center;font-weight:700;color:#666;background:#e0e0e0;padding:6px;margin:8px 0;border-radius:4px;font-size:14px;letter-spacing:2px;";
       const yearLabel = d.year ? (d.year + "年") : (YEAR_LIST[yearBoundaryCount] || (2000+yearBoundaryCount)+"年");
-      sep.textContent = yearLabel + "农历" + yz + "年（" + yz + "的号码是：01 13 25 37 49）";
+      sep.textContent = "🔄 " + yearLabel + "农历" + yz + "年 换肖 → 从 " + d.issue + "期 起 · " + yz + "的号码：01 13 25 37 49";
       list.appendChild(sep);
       lastYearZodiac = yz;
       lastYearKey = yearKey;
