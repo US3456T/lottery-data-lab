@@ -1183,15 +1183,19 @@ function drawTextBlock(d, idx, yz){
   }
   var p2 = pad2;
   var head = "第 " + d.issue + " 期" + (d.year ? " · " + d.year + " 年" : (yz ? " · " + yz + " 年" : ""));
+  // 固定宽度对齐：数字补空格到 3 位，中文补全角空格
+  var num = function(v){ var s = String(v); return "  " + s; };
+  var cn2 = function(v){ var s = String(v); return s + (s.length === 1 ? "　" : ""); };
   var L = [];
-  L.push("号码： " + n7.slice(0,6).map(p2).join("  ") + "   ｜ 特码 " + p2(d.special));
-  L.push("生肖： " + zs.slice(0,6).join("  ") + "   ｜ " + zs[6]);
-  L.push("波色： " + cs.slice(0,6).map(function(c){ return c + "波"; }).join("  ") + "   ｜ " + cs[6] + "波");
-  L.push("尾数： " + n7.slice(0,6).map(function(n){ return String(n % 10); }).join("    ") + "    ｜ " + (d.special % 10));
-  L.push("头数： " + n7.slice(0,6).map(function(n){ return String(Math.floor(n / 10)); }).join("    ") + "    ｜ " + Math.floor(d.special / 10));
-  L.push("合数： " + n7.slice(0,6).map(function(n){ return String(Math.floor(n / 10) + n % 10); }).join("   ") + "   ｜ " + (Math.floor(d.special / 10) + d.special % 10));
-  L.push("大小： " + n7.slice(0,6).map(function(n){ return n >= 25 ? "大" : "小"; }).join("    ") + "    ｜ " + (d.special >= 25 ? "大" : "小"));
-  L.push("单双： " + n7.slice(0,6).map(function(n){ return (n % 2) ? "单" : "双"; }).join("    ") + "    ｜ " + ((d.special % 2) ? "单" : "双"));
+  L.push("号码：" + n7.slice(0,6).map(function(n){ return " " + p2(n); }).join(" ") + "  ｜ 特码 " + p2(d.special));
+  L.push("生肖：" + zs.slice(0,6).map(function(z){ return " " + cn2(z); }).join("") + " ｜ " + zs[6]);
+  L.push("波色：" + cs.slice(0,6).map(function(c){ return " " + cn2(c) + "波"; }).join("") + " ｜ " + cs[6] + "波");
+  L.push("尾数：" + n7.slice(0,6).map(function(n){ return "  " + (n % 10); }).join(" ") + "  ｜ " + (d.special % 10));
+  L.push("头数：" + n7.slice(0,6).map(function(n){ return "  " + Math.floor(n / 10); }).join(" ") + "  ｜ " + Math.floor(d.special / 10));
+  var hs = function(n){ var s = String(Math.floor(n / 10) + n % 10); return " " + (s.length === 1 ? " " + s : s); };
+  L.push("合数：" + n7.slice(0,6).map(hs).join(" ") + "  ｜ " + (Math.floor(d.special / 10) + d.special % 10));
+  L.push("大小：" + n7.slice(0,6).map(function(n){ return " " + (n >= 25 ? "大" : "小") + "　"; }).join("") + " ｜ " + (d.special >= 25 ? "大" : "小"));
+  L.push("单双：" + n7.slice(0,6).map(function(n){ return " " + ((n % 2) ? "单" : "双") + "　"; }).join("") + " ｜ " + ((d.special % 2) ? "单" : "双"));
   return "<div style='font-weight:800;font-size:15px;color:#0f172a;margin-bottom:4px;'>" + head + "</div>" +
     "<pre style='margin:0;font-family:Consolas,\"Courier New\",monospace;font-size:13.5px;line-height:1.75;white-space:pre-wrap;user-select:text;color:#1f2937;'>" +
     L.join("\n") + "</pre>";
