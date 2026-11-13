@@ -2152,7 +2152,7 @@ function arenaTick(){
     if (ARENA.round % 10 === 0) arenaStore();   // 每 10 轮存一次进度，关掉也记得
     setTimeout(arenaTick, 0);
   }
-  else { ARENA.running = false; ARENA.lastResult = arenaSnapshot(); arenaSaveChampion(ARENA.lastResult); arenaStore(); }
+  else { ARENA.running = false; ARENA.lastResult = arenaSnapshot(); arenaSaveChampion(ARENA.lastResult); arenaArchive(ARENA.lastResult); arenaStore(); arenaRender(); }
 }
 
 // 冠军自动选举：把实测排名第一的引擎记下来，供页面长期使用
@@ -2200,6 +2200,8 @@ function arenaRender(){
       + "还没开始比。<br>先到【历史数据】页载入记录（或从【开奖数据源】粘贴入库），再回到这里点「开始竞技」。<br>"
       + "「跑每轮模拟期数」默认 1500、「跑多少轮」默认 20，就是 20 段 × 1500 期 = 3 万次预测／每个引擎。<br>"
       + "跑完这里会出现 12 个引擎的排名表，第一名会显示 👑 冠军；机器慢的话可以把期数改成 500、轮数改成 5 先试。</div>";
+    var ht0 = arenaHistText();
+    if (ht0) out.innerHTML += "<div style='margin-top:8px;padding:8px;border:1px solid #ddd;border-radius:6px;background:#fafafa;font-size:12px;line-height:1.8;white-space:pre-wrap;'>" + ht0 + "</div>";
     return;
   }
   var snap = arenaSnapshot();
@@ -2226,10 +2228,40 @@ function arenaRender(){
   });
   html += "</table>";
   html += "<div style='margin-top:8px;font-size:12px;color:#555;line-height:1.7;'>理论随机值：单号 2.04% ／ 前6码 12.24% ／ 前18码 36.73%。<br>样本量 " + snap.totalPreds.toLocaleString() + " 次预测（" + snap.round + " 轮 × " + snap.span + " 期）。<br><b>看结论的方法</b>：只有明显高于 36.73% 才算真本事；上下摆动 1~2 个百分点是随机波动，不算。</div>";
+  var ht = arenaHistText();
+  if (ht) html += "<div style='margin-top:10px;padding:8px;border:1px solid #ddd;border-radius:6px;background:#fafafa;font-size:12px;line-height:1.8;white-space:pre-wrap;'>" + ht + "</div>";
   out.innerHTML = html;
 }
 
-function arenaStop(){ ARENA.running = false; arenaSaveChampion(arenaSnapshot()); arenaStore(); arenaRender(); }
+function arenaStop(){ ARENA.running = false; arenaSaveChampion(arenaSnapshot()); arenaArchive(arenaSnapshot()); arenaStore(); arenaRender(); }
+
+// ===== 比赛档案：每次跑完（或点停止）都存进本地库，关掉浏览器也在 =====
+function arenaHistGet(){
+  try { return JSON.parse(localStorage.getItem(mkey("arena_hist")) || "[]") || []; } catch(e) { return []; }
+}
+function arenaArchive(snap){
+  try {
+    if (!snap || !snap.rows || !snap.rows.length || !snap.totalPreds) return;
+    var rec = { at: snap.at, market: marketName(), span: snap.span, round: snap.round,
+                totalPreds: snap.totalPreds, champ: snap.rows[0].model, top18: snap.rows[0].top18,
+                rows: snap.rows.map(function(r){ return [r.model, r.top1, r.top6, r.top18]; }) };
+    var h = arenaHistGet();
+    var last = h.length ? h[h.length - 1] : null;
+    if (last && last.at === rec.at && last.totalPreds === rec.totalPreds) h[h.length - 1] = rec;
+    else h.push(rec);
+    localStorage.setItem(mkey("arena_hist"), JSON.stringify(h.slice(-12)));
+  } catch(e) {}
+}
+function arenaHistText(){
+  var h = arenaHistGet();
+  if (!h.length) return "";
+  var lines = ["📚 往期比赛记录（存在本地库，关浏览器也在，最多留最近 12 次）"];
+  h.slice().reverse().forEach(function(rec, i){
+    lines.push("#" + (h.length - i) + "  " + rec.at + "　" + (rec.market || "") + "　" + rec.round + " 轮 × " + rec.span + " 期　共 " + (rec.totalPreds || 0).toLocaleString() + " 次预测　冠军：" + rec.champ + "（前18码 " + rec.top18 + "%）");
+    (rec.rows || []).slice(0, 3).forEach(function(r, j){ lines.push("　　" + (j === 0 ? "🥇" : (j === 1 ? "🥈" : "🥉")) + " " + r[0] + "：单号 " + r[1] + "% ／ 前6 " + r[2] + "% ／ 前18 " + r[3] + "%"); });
+  });
+  return lines.join("\n");
+}
 
 function arenaSave(){
   var snap = ARENA.lastResult || arenaSnapshot();
@@ -2237,6 +2269,8 @@ function arenaSave(){
   txt += "引擎\t特码单号%\t前6码%\t前18码%\n";
   snap.rows.forEach(function(r){ txt += r.model + "\t" + r.top1 + "\t" + r.top6 + "\t" + r.top18 + "\n"; });
   txt += "\n理论随机值：2.04 / 12.24 / 36.73（%）\n";
+  var ht = arenaHistText();
+  if (ht) txt += "\n" + ht + "\n";
   saveTextFile(txt, "AI竞技评测结果_" + Date.now() + ".txt");
 }
 // ===== 开奖数据源：网址可换 + 批量粘贴入库（只认号码） =====
@@ -2656,7 +2690,7 @@ function b7Render(head){
     var cur = B7.track[B7.track.length - 1];
     lines.push("");
     lines.push("【跟踪记录 · 最近 " + B7.track.length + " 次】");
-    B7.track.slice(-3).forEach(function(t){
+    B7.track.slice(-10).forEach(function(t){
       lines.push(" " + t.at + "　" + t.n + " 期 / 到第 " + t.issue + " 期　Top12 " + t.top12 + "%　Top18 " + t.top18 + "%");
     });
     if (prev){
