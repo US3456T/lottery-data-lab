@@ -136,8 +136,8 @@ button.primary:hover { background: var(--accent); }
         <button class="primary" style="background:#7f1d1d;color:#fff;" onclick="dedupeData()">🧹 一键去重（修串期）</button>
         <button class="primary" onclick="backupData()">💾 数据备份（存到本电脑）</button>
         <button class="primary" onclick="document.getElementById('file-input').click()">📂 打开备份文件（恢复）</button>
-        <button class="primary" style="background:#0f766e;color:#fff;" onclick="backupAllData()">🗄 备份全部（数据+AI学习+竞技档案）</button>
-        <button class="primary" style="background:#0f766e;color:#fff;" onclick="document.getElementById('all-input').click()">📥 导入恢复全部</button>
+        <button class="primary" style="background:#0f766e;color:#fff;" onclick="backupAllData()">🗄 导出（竞技+特码 一起）</button>
+        <button class="primary" style="background:#0f766e;color:#fff;" onclick="document.getElementById('all-input').click()">📥 导入（竞技+特码 一起）</button>
         <input type="file" id="all-input" accept=".json,.txt" style="display:none" onchange="restoreAllData(this)">
         <span class="hint" style="font-size:11px;color:var(--text-dim);">备份文件自己选保存位置（第一次请选 D:\AI数据，Chrome 会记住这个文件夹）；备份出来的 txt 以后可直接重新导入</span>
       </div>
@@ -219,8 +219,8 @@ button.primary:hover { background: var(--accent); }
       </div>
       <div id="arena-progress" style="font-size:12px;color:var(--accent);padding:4px 0;"></div>
       <div class="row" style="gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;">
-        <button onclick="backupAllData()">🗄 备份全部数据</button>
-        <button onclick="document.getElementById('all-input').click()">📥 导入恢复</button>
+        <button onclick="backupAllData()">🗄 导出（竞技+特码 一起）</button>
+        <button onclick="document.getElementById('all-input').click()">📥 导入（竞技+特码 一起）</button>
       </div>
       <div id="arena-out" class="report"></div>
     </div>
@@ -265,8 +265,8 @@ button.primary:hover { background: var(--accent); }
       </div>
       <div id="b7-progress" style="font-size:12px;color:var(--accent);padding:4px 0;"></div>
       <div class="row" style="gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;">
-        <button onclick="backupAllData()">🗄 备份全部数据</button>
-        <button onclick="document.getElementById('all-input').click()">📥 导入恢复</button>
+        <button onclick="backupAllData()">🗄 导出（竞技+特码 一起）</button>
+        <button onclick="document.getElementById('all-input').click()">📥 导入（竞技+特码 一起）</button>
         <button onclick="b7ResetModel()">权重归零重学</button>
       </div>
       <div id="b7-out" class="report" style="padding:8px;"></div>
@@ -1193,8 +1193,14 @@ async function backupAllData(){
     keys: keys
   };
   if (!Object.keys(keys).length){ alert("本地库里还没有东西可备份"); return; }
-  const name = "彩票工作台_全部数据_" + stamp + ".json";
-  await saveJsonFile(JSON.stringify(pack), name);
+  const cntArena = (keys["arena__hk"] || keys["arena__mo"]) ? 1 : 0;
+  const cntHist = ["arena_hist__hk", "arena_hist__mo"].filter(k => keys[k]).length;
+  const cntModel = ["b7_model__hk", "b7_model__mo"].filter(k => keys[k]).length;
+  const cntData = ["lottery_data__hk", "lottery_data__mo"].filter(k => keys[k]).length;
+  const summary = "备份内容：\n· 历史数据 " + cntData + " 套（港/澳）\n· 特码AI权重 " + cntModel + " 套\n· 竞技进度/档案 " + cntArena + " 份 / " + cntHist + " 份\n共 " + Object.keys(keys).length + " 项";
+  const name = "彩票工作台_竞技与特码_全部_" + stamp + ".json";
+  const ok = await saveJsonFile(JSON.stringify(pack), name);
+  if (ok) alert("✅ 导出完成（竞技+特码 一起，导入时两边会一起回来）\n\n" + summary);
 }
 function restoreAllData(input){
   const f = input.files && input.files[0];
@@ -1208,7 +1214,14 @@ function restoreAllData(input){
       input.value = ""; return;
     }
     const n = Object.keys(pack.keys).length;
-    if (!confirm("要导入这份备份吗？\n备份时间：" + (pack.at || "?") + "\n包含 " + n + " 项（历史数据 / AI 学习权重 / 学习设置 / 竞技档案）\n\n会覆盖当前同名的数据，导入后页面自动刷新。")){ input.value = ""; return; }
+    const kk = pack.keys;
+    const cntModel = ["b7_model__hk", "b7_model__mo"].filter(k => kk[k]).length;
+    const cntArena = ["arena__hk", "arena__mo"].filter(k => kk[k]).length;
+    const cntHist = ["arena_hist__hk", "arena_hist__mo"].filter(k => kk[k]).length;
+    const cntData = ["lottery_data__hk", "lottery_data__mo"].filter(k => kk[k]).length;
+    if (!confirm("要导入这份备份吗？\n备份时间：" + (pack.at || "?")
+      + "\n\n里面包含：\n· 历史数据 " + cntData + " 套\n· 特码AI权重 " + cntModel + " 套\n· 竞技进度/档案 " + cntArena + " / " + cntHist + " 份\n共 " + n + " 项"
+      + "\n\n会覆盖当前同名数据，导入后页面自动刷新（竞技和特码两边一起恢复）。")){ input.value = ""; return; }
     let ok = 0, bad = 0;
     Object.keys(pack.keys).forEach(k => {
       try { localStorage.setItem(k, pack.keys[k]); ok++; } catch(e){ bad++; }
