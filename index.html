@@ -225,6 +225,7 @@ button.primary:hover { background: var(--accent); }
       <div class="row" style="gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;">
         <button onclick="backupAllData()">🗄 导出（竞技+特码 一起）</button>
         <button onclick="document.getElementById('all-input').click()">📥 导入（竞技+特码 一起）</button>
+        <button onclick="arenaRelock()">🔁 重新生成下一期</button>
       </div>
       <div id="arena-out" class="report"></div>
     </div>
@@ -271,6 +272,7 @@ button.primary:hover { background: var(--accent); }
       <div class="row" style="gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;">
         <button onclick="backupAllData()">🗄 导出（竞技+特码 一起）</button>
         <button onclick="document.getElementById('all-input').click()">📥 导入（竞技+特码 一起）</button>
+        <button onclick="b7Relock()">🔁 重新生成下一期</button>
         <button onclick="b7ResetModel()">权重归零重学</button>
       </div>
       <div id="b7-out" class="report" style="padding:8px;"></div>
@@ -785,6 +787,7 @@ function setData(d){
   renderLatest();
   renderYearIndex();
   try { mkUi(); } catch(e) {}
+  try { if (typeof nextLockResolveAll === "function") nextLockResolveAll(); } catch(e) {}
   try { if (typeof refreshSeqBar === "function") refreshSeqBar(); } catch(e) {}
   // 数据一进来就自动结算 + 自动出推荐（不用点任何按钮）
   try { setTimeout(function(){ try { if (typeof ledgerRun === "function" && !LEDGER.busy) ledgerRun(false); } catch(e) {} }, 350); } catch(e) {}
@@ -1170,7 +1173,7 @@ async function backupData(){
 }
 
 // ===== 全部数据备份 / 导入恢复（历史记录 + AI 学习权重 + 学习设置 + 竞技进度与档案 + 冠军）=====
-const ALL_PREFIX = ["lottery_data", "b7_model", "b7_cfg", "arena", "arena_cfg", "arena_hist", "ai_champion", "ai_", "lottery_inputs", "lottery_market", "view_limit", "market_hint", "lottery_current"];
+const ALL_PREFIX = ["lottery_data", "b7_model", "b7_cfg", "arena", "arena_cfg", "arena_hist", "ai_champion", "ai_", "lottery_inputs", "lottery_market", "view_limit", "market_hint", "lottery_current", "next_lock", "next_hist"];
 function allStoreKeys(){
   const out = [];
   for (let i = 0; i < localStorage.length; i++){
@@ -2419,7 +2422,21 @@ function arenaNextBlock(){
   out.push("6 个平码（前 6 个，避开首选特码，从小到大）：" + asc(pk));
   out.push("  明细：" + pk.map(att).join("　｜　"));
   out.push("（号码一律从小到大排；生肖顺序＝冠军引擎自己排名的先后，越靠前越热。全部是它自己跑出来的，没有外加任何手工规则；下一期是重新抽号，命中率看上面表格。）");
-  return out.join("\n");
+  var txt = out.join("\n");
+  var target = nextIssueNo(lastIssue);
+  var lk = nextLockRead("arena", target);
+  if (lk && lk.text){
+    var head = (ARENA.running ? "⏳ 还在跑，但这一注已锁定，下面不会变；" : "🔒 这一注已锁定，第 " + target + " 期开出后自动换下一期；") + "想重算点「🔁 重新生成下一期」";
+    return head + "\n" + lk.text;
+  }
+  if (ARENA.running){
+    return "⏳ 正在跑，" + ARENA.round + "/" + ARENA.rounds + " 轮；跑完（或点停止）自动出下一期并锁定，跑的时候不出号。";
+  }
+  nextLockWrite("arena", target, txt, {
+    sp: base[0],
+    n12: base.slice(0, 12), n18: base.slice(0, 18), n24: list24.slice(0, 24)
+  });
+  return "🔒 这一注已锁定（第 " + target + " 期开出后自动换下一期；想重算点「🔁 重新生成下一期」）\n" + txt;
 }
 function arenaStop(){ ARENA.running = false; arenaSaveChampion(arenaSnapshot()); arenaArchive(arenaSnapshot()); arenaStore(); arenaRender(); }
 
@@ -2898,8 +2915,63 @@ function seqText(){
   return "顺序核验：共 " + r.total + " 期，有 " + r.gaps.length + " 处跳期（" + g + (r.gaps.length > 4 ? " 等" : "")
        + "）；学习和竞技都按顺序走，跳过这些断点，不拿跳期当上一期";
 }
-// ===== 顺序/网上核对状态条 =====
-var REMOTE_INFO = null;
+// ===== 下一期「锁定」：一注定下来就不许乱跳，等那期开出来才换 =====
+function nextLockRead(kind, issue){
+  try {
+    var o = JSON.parse(localStorage.getItem(mkey("next_lock_" + kind)) || "null");
+    if (!o || o.market !== window.MARKET) return null;
+    if (issue !== undefined && String(o.issue) !== String(issue)) return null;
+    return o;
+  } catch(e) { return null; }
+}
+function nextLockWrite(kind, issue, text, extra){
+  try {
+    var o = { market: window.MARKET, issue: issue, text: text, at: new Date().toLocaleString() };
+    if (extra) for (var k in extra) o[k] = extra[k];
+    localStorage.setItem(mkey("next_lock_" + kind), JSON.stringify(o));
+    return o;
+  } catch(e) { return null; }
+}
+function nextLockClear(kind){
+  try { localStorage.removeItem(mkey("next_lock_" + kind)); } catch(e) {}
+}
+// 新一期进来 → 把锁定的那一注判一下中没中，存档，然后解锁（下一期会重新锁一注）
+function nextLockResolveAll(){
+  var last = draws.length ? draws[draws.length - 1] : null;
+  if (!last) return;
+  ["b7", "arena"].forEach(function(kind){
+    var o = null;
+    try { o = JSON.parse(localStorage.getItem(mkey("next_lock_" + kind)) || "null"); } catch(e) {}
+    if (!o || o.market !== window.MARKET) return;
+    if (String(o.issue) !== String(last.issue)) return;
+    var inArr = function(a){ return Array.isArray(a) && a.indexOf(last.special) >= 0; };
+    var res = { kind: kind, issue: o.issue, drawn: last.special,
+                hit12: Array.isArray(o.n12) ? inArr(o.n12) : null,
+                hit18: Array.isArray(o.n18) ? inArr(o.n18) : null,
+                hit24: Array.isArray(o.n24) ? inArr(o.n24) : null,
+                at: new Date().toLocaleString() };
+    try {
+      var h = JSON.parse(localStorage.getItem(mkey("next_hist")) || "[]") || [];
+      h.push(res);
+      localStorage.setItem(mkey("next_hist"), JSON.stringify(h.slice(-20)));
+      localStorage.removeItem(mkey("next_lock_" + kind));
+    } catch(e) {}
+  });
+}
+function nextHistText(){
+  try {
+    var h = JSON.parse(localStorage.getItem(mkey("next_hist")) || "[]") || [];
+    if (!h.length) return "";
+    var out = ["【锁定注 · 开奖后核对（最多留最近 20 注）】"];
+    h.slice().reverse().forEach(function(r){
+      out.push(" " + r.at + "　" + (r.kind === "b7" ? "特码页" : "竞技页") + " 第 " + r.issue + " 期 → 实开 " + pad2(r.drawn)
+             + "　12码 " + (r.hit12 ? "✅中" : (r.hit12 === false ? "❌未中" : "-"))
+             + "　18码 " + (r.hit18 ? "✅中" : (r.hit18 === false ? "❌未中" : "-"))
+             + "　24码 " + (r.hit24 ? "✅中" : (r.hit24 === false ? "❌未中" : "-")));
+    });
+    return out.join("\n");
+  } catch(e) { return ""; }
+}
 function localDrawsOf(m){
   try { return JSON.parse(localStorage.getItem("lottery_data__" + m) || "[]"); } catch(e){ return []; }
 }
@@ -3002,6 +3074,7 @@ function b7Render(head){  var box = document.getElementById("b7-out");
            + "　" + a.odd + a.big;
     };
     // ===== 下一期排最前面 =====
+    var nStart = lines.length;
     lines.push("");
     lines.push("【下一期 · " + marketName() + " · 第 " + nxtIssue + " 期 · 特码（第 7 个）】");
     lines.push("首选特码：" + pad2(ord0[0].n) + "　" + att(ord0[0].n) + "　概率 " + (ord0[0].p * 100).toFixed(2) + "%");
@@ -3037,6 +3110,27 @@ function b7Render(head){  var box = document.getElementById("b7-out");
       lines.push(k + " 码一行速览（从小到大）： " + asc.map(pad2).join(" "));
     });
     lines.push("上一期（第 " + last0.issue + " 期）已经开过了，不再回头看；上面全是给下一期用的。");
+    // ===== 锁定：跑完就定住，不再乱跳；等这一期开出来才换新的一注 =====
+    var fresh = lines.slice(nStart);
+    var lk = nextLockRead("b7", nxtIssue);
+    if (lk && lk.text){
+      lines.length = nStart;
+      lines.push("🔒 这一注已锁定（第 " + nxtIssue + " 期开出后自动换下一期；想重算点「🔁 重新生成下一期」）");
+      lines.push(lk.text);
+    } else if (B7.running){
+      lines.length = nStart;
+      lines.push("⏳ 正在学习，学完自动出下一期（出来就锁定，不会再跳号）。");
+    } else {
+      nextLockWrite("b7", nxtIssue, fresh.join("\n"), {
+        sp: ord0[0].n,
+        n12: ord0.slice(0, 12).map(function(o){ return o.n; }),
+        n18: ord0.slice(0, 18).map(function(o){ return o.n; }),
+        n24: ord0.slice(0, 24).map(function(o){ return o.n; })
+      });
+      lines.push("🔒 这一注已锁定（第 " + nxtIssue + " 期开出后自动换下一期；想重算点「🔁 重新生成下一期」）");
+    }
+    var nh = nextHistText();
+    if (nh) lines.push(""), lines.push(nh);
   }
   box.innerHTML = "<pre style='margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.9;white-space:pre-wrap;user-select:text;'>" + lines.join("\n") + "</pre>";
 }
@@ -3131,7 +3225,17 @@ function b7ReadCfgRaw(){
   if (c !== null) B7.hold = c;
   return B7;
 }
-function b7ResetModel(){ if (!confirm("把已经学到的权重清掉，重新学？（历史数据不受影响）")) return; b7Init(true); B7.epoch = 0; B7.val = null; B7.track = []; try { localStorage.removeItem(mkey("b7_model")); } catch(e) {} b7Render("模型已归零，点「开始/继续学习」或等它自动学。"); }
+function b7Relock(){
+  nextLockClear("b7");
+  if (typeof b7Render === "function") b7Render("已重新生成下一期（旧的一注作废）。");
+}
+function arenaRelock(){
+  nextLockClear("arena");
+  if (ARENA.running){ alert("还在跑，先点「停止」再重新生成"); return; }
+  if (typeof arenaRender === "function") arenaRender();
+}
+function b7ResetModel(){
+  if (!confirm("把已经学到的权重清掉，重新学？（历史数据不受影响）")) return; b7Init(true); B7.epoch = 0; B7.val = null; B7.track = []; try { localStorage.removeItem(mkey("b7_model")); } catch(e) {} b7Render("模型已归零，点「开始/继续学习」或等它自动学。"); }
 
 // ===== 记忆 + 自动跟踪：模型按市场分开存，数据一变就自己续学 =====
 function b7Save(){
