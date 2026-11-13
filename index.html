@@ -136,6 +136,9 @@ button.primary:hover { background: var(--accent); }
         <button class="primary" style="background:#7f1d1d;color:#fff;" onclick="dedupeData()">🧹 一键去重（修串期）</button>
         <button class="primary" onclick="backupData()">💾 数据备份（存到本电脑）</button>
         <button class="primary" onclick="document.getElementById('file-input').click()">📂 打开备份文件（恢复）</button>
+        <button class="primary" style="background:#0f766e;color:#fff;" onclick="backupAllData()">🗄 备份全部（数据+AI学习+竞技档案）</button>
+        <button class="primary" style="background:#0f766e;color:#fff;" onclick="document.getElementById('all-input').click()">📥 导入恢复全部</button>
+        <input type="file" id="all-input" accept=".json,.txt" style="display:none" onchange="restoreAllData(this)">
         <span class="hint" style="font-size:11px;color:var(--text-dim);">备份文件自己选保存位置（第一次请选 D:\AI数据，Chrome 会记住这个文件夹）；备份出来的 txt 以后可直接重新导入</span>
       </div>
       <div id="health-out" class="report" style="display:none;"></div>
@@ -215,6 +218,10 @@ button.primary:hover { background: var(--accent); }
         <span class="hint">场上 12 个引擎：🧠 神经网络(MLP)　🔁 循环网络(RNN)　🧭 KNN相似期　🎯 Q学习强化　📊 贝叶斯在线　🧬 遗传算法　⚖️ 集成堆叠｜对照：马尔可夫1/2阶、热号、遗漏回补、随机基线。带图标的六个都是每期自己调权重、会持续学习的模型，预测完立刻用真结果训练一次。</span>
       </div>
       <div id="arena-progress" style="font-size:12px;color:var(--accent);padding:4px 0;"></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;">
+        <button onclick="backupAllData()">🗄 备份全部数据</button>
+        <button onclick="document.getElementById('all-input').click()">📥 导入恢复</button>
+      </div>
       <div id="arena-out" class="report"></div>
     </div>
 
@@ -258,6 +265,8 @@ button.primary:hover { background: var(--accent); }
       </div>
       <div id="b7-progress" style="font-size:12px;color:var(--accent);padding:4px 0;"></div>
       <div class="row" style="gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;">
+        <button onclick="backupAllData()">🗄 备份全部数据</button>
+        <button onclick="document.getElementById('all-input').click()">📥 导入恢复</button>
         <button onclick="b7ResetModel()">权重归零重学</button>
       </div>
       <div id="b7-out" class="report" style="padding:8px;"></div>
@@ -1134,8 +1143,83 @@ async function backupData(){
   await saveTextFile(text, "彩票历史记录备份_" + draws.length + "期_" + stamp + ".txt");
 }
 
-function healthCheck(){
-  const box = document.getElementById("health-out");
+// ===== 全部数据备份 / 导入恢复（历史记录 + AI 学习权重 + 学习设置 + 竞技进度与档案 + 冠军）=====
+const ALL_PREFIX = ["lottery_data", "b7_model", "b7_cfg", "arena", "arena_cfg", "arena_hist", "ai_champion", "ai_", "lottery_inputs", "lottery_market", "view_limit", "market_hint", "lottery_current"];
+function allStoreKeys(){
+  const out = [];
+  for (let i = 0; i < localStorage.length; i++){
+    const k = localStorage.key(i);
+    if (!k) continue;
+    if (ALL_PREFIX.some(p => k.indexOf(p) === 0)) out.push(k);
+  }
+  return out;
+}
+async function saveJsonFile(text, filename){
+  try {
+    if (window.showSaveFilePicker){
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: "JSON 备份", accept: { "application/json": [".json"] } }]
+      });
+      const w = await handle.createWritable();
+      await w.write(new Blob([text], { type: "application/json;charset=utf-8" }));
+      await w.close();
+      alert("✅ 已保存：" + handle.name);
+      return true;
+    }
+  } catch(e){ if (e && e.name === "AbortError") return false; }
+  const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  alert("✅ 已下载：" + filename);
+  return true;
+}
+async function backupAllData(){
+  const now = new Date();
+  const stamp = now.getFullYear() + String(now.getMonth()+1).padStart(2,"0") + String(now.getDate()).padStart(2,"0")
+    + "_" + String(now.getHours()).padStart(2,"0") + String(now.getMinutes()).padStart(2,"0");
+  const keys = {};
+  allStoreKeys().forEach(k => { keys[k] = localStorage.getItem(k); });
+  const pack = {
+    app: "彩票工作台·全部数据",
+    version: 1,
+    at: now.toLocaleString(),
+    market: (typeof marketName === "function" ? marketName() : ""),
+    draws: (typeof draws !== "undefined" ? draws.length : 0),
+    hasHK: !!(keys["lottery_data__hk"] || keys["lottery_data"]),
+    hasMO: !!keys["lottery_data__mo"],
+    keys: keys
+  };
+  if (!Object.keys(keys).length){ alert("本地库里还没有东西可备份"); return; }
+  const name = "彩票工作台_全部数据_" + stamp + ".json";
+  await saveJsonFile(JSON.stringify(pack), name);
+}
+function restoreAllData(input){
+  const f = input.files && input.files[0];
+  if (!f){ return; }
+  const rd = new FileReader();
+  rd.onload = function(){
+    let pack = null;
+    try { pack = JSON.parse(String(rd.result)); } catch(e){}
+    if (!pack || !pack.keys){
+      alert("这个文件不是「全部数据」备份（可能是历史记录的 txt）。\n历史记录请用左边的「📂 打开备份文件（恢复）」。");
+      input.value = ""; return;
+    }
+    const n = Object.keys(pack.keys).length;
+    if (!confirm("要导入这份备份吗？\n备份时间：" + (pack.at || "?") + "\n包含 " + n + " 项（历史数据 / AI 学习权重 / 学习设置 / 竞技档案）\n\n会覆盖当前同名的数据，导入后页面自动刷新。")){ input.value = ""; return; }
+    let ok = 0, bad = 0;
+    Object.keys(pack.keys).forEach(k => {
+      try { localStorage.setItem(k, pack.keys[k]); ok++; } catch(e){ bad++; }
+    });
+    input.value = "";
+    alert("✅ 已导入 " + ok + " 项" + (bad ? "（" + bad + " 项太大没存进去）" : "") + "，页面马上刷新。");
+    setTimeout(() => location.reload(), 400);
+  };
+  rd.readAsText(f);
+}
+function healthCheck(){  const box = document.getElementById("health-out");
   if(!box) return;
   if(!draws.length){ alert("请先加载历史数据"); return; }
   const issues = [];
