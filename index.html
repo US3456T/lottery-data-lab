@@ -97,6 +97,7 @@ button.primary:hover { background: var(--accent); }
       <button class="tab" data-tab="trigger">🎯 触发-滞后</button>
       <button class="tab" data-tab="backtest">🔁 全历史回测</button>
       <button class="tab" data-tab="arena">🧪 AI 竞技评测</button>
+      <button class="tab" data-tab="break7">🔢 特码破数</button>
       <button class="tab" data-tab="ledger">🧾 预测流水</button>
       <button class="tab" data-tab="source">📡 开奖数据源</button>
       <button class="tab active" data-tab="chat">🤖 AI 对话</button>
@@ -236,6 +237,17 @@ button.primary:hover { background: var(--accent); }
         <label style="margin-left:8px;font-size:12px;"><input type="checkbox" id="batch-nn" checked> 同时喂给我的神经网络（记流水）</label>
       </div>
       <div id="src-msg" class="report" style="padding:8px;"></div>
+    </div>
+
+    <div class="tab-pane" id="pane-break7">
+      <div class="row" style="gap:8px;flex-wrap:wrap;">
+        <button class="primary" onclick="break7Run()">🔢 用本期 6 个平码破特码</button>
+        <label style="font-size:12px;">候选个数：</label>
+        <input type="text" id="b7-n" value="12" style="width:60px">
+        <button onclick="break7Stats()">📈 全历史验命中率</button>
+      </div>
+      <div class="row"><span class="hint">规则：把 6 个平码做加、减、和值、尾数和、合数和、生肖位、镜像数等运算，得出候选特码；再拿历史每一期验证“用当期 6 平码能不能推出当期特码”。数字是死的，命中率如实报，不吹。</span></div>
+      <div id="b7-out" class="report" style="padding:8px;"></div>
     </div>
 
     <div class="tab-pane" id="pane-ledger">
@@ -662,7 +674,7 @@ function openChecked(){
 
 // ===== Tab切换 =====
 document.querySelectorAll(".tab").forEach(btn=>{
-  btn.onclick=()=>{document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));document.querySelectorAll(".tab-pane").forEach(p=>p.classList.remove("active"));btn.classList.add("active");document.getElementById("pane-"+btn.dataset.tab).classList.add("active"); if(btn.dataset.tab==="auto"){ try{ renderAutoPage(); }catch(e){} } if(btn.dataset.tab==="arena"){ try{ arenaRestore(); }catch(e){} } };
+  btn.onclick=()=>{document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));document.querySelectorAll(".tab-pane").forEach(p=>p.classList.remove("active"));btn.classList.add("active");document.getElementById("pane-"+btn.dataset.tab).classList.add("active"); if(btn.dataset.tab==="auto"){ try{ renderAutoPage(); }catch(e){} } if(btn.dataset.tab==="arena"){ try{ arenaRestore(); }catch(e){} } if(btn.dataset.tab==="break7"){ try{ break7Run(); }catch(e){} } };
 });
 
 // ===== 页面操作 =====
@@ -2427,7 +2439,107 @@ function ballChip(n, idx){
 // ===== 顶部自动条：数据一载入就自动算好，直接显示，不用点任何按钮 =====
 function renderAutoBar(){ /* 顶部自动推荐条已移除，内容全部在「📋 推荐分组」页 */ }
 
-// 用最近数据给 1~49 打分，导出 24 / 18 / 12 三档（嵌套不重复）
+// ===== 特码破数：用 6 个平码做加减乘除/尾数/合数，派生出第 7 个号 =====
+function b7wrap(v){
+  v = Math.round(Math.abs(v)) % 49;
+  if (v === 0) v = 49;
+  return v;
+}
+function b7ds(n){ var s = 0; while (n > 0){ s += n % 10; n = Math.floor(n / 10); } return s; }
+function b7rules(d){
+  var a = (d.normals || []).slice(0, 6);
+  if (a.length < 6) return [];
+  var S = a.reduce(function(x, y){ return x + y; }, 0);
+  var odd = a.filter(function(x){ return x % 2 === 1; }).reduce(function(x, y){ return x + y; }, 0);
+  var even = a.filter(function(x){ return x % 2 === 0; }).reduce(function(x, y){ return x + y; }, 0);
+  var mx = Math.max.apply(null, a), mn = Math.min.apply(null, a);
+  var dsSum = a.reduce(function(x, y){ return x + b7ds(y); }, 0);
+  var tailSum = a.reduce(function(x, y){ return x + (y % 10); }, 0);
+  var headSum = a.reduce(function(x, y){ return x + Math.floor(y / 10); }, 0);
+  var out = [];
+  function add(n, why){ n = b7wrap(n); out.push({ n: n, why: why }); }
+  add(S, "六码和值 " + S + " 取 49 内");
+  add(b7ds(S), "和值合数 " + b7ds(S));
+  add(S % 10, "和值尾 " + (S % 10) + " 当尾数");
+  add(10 * (headSum % 5) + (S % 10), "头数和余 " + (headSum % 5) + " 配和值尾 " + (S % 10));
+  add(a[0] + a[5], "首尾相加 " + a[0] + "+" + a[5]);
+  add(a[1] + a[4], "次首尾相加 " + a[1] + "+" + a[4]);
+  add(mx - mn, "最大减最小 " + mx + "-" + mn);
+  add(mx + mn, "最大加最小 " + mx + "+" + mn);
+  add(Math.abs(odd - even), "奇和与偶和之差 " + odd + "-" + even);
+  add(tailSum, "六码尾数和 " + tailSum);
+  add(dsSum, "六码合数和 " + dsSum);
+  add(a.reduce(function(x, y){ return x * (y % 10); }, 1), "六码尾数相乘");
+  add(Math.abs(a[0] * a[1] - a[2] * a[3]), "交叉相乘相减");
+  add(a[2] * 2 + a[3] - a[1], "中段运算 " + a[2] + "*2+" + a[3] + "-" + a[1]);
+  [0,1,2,3,4,5].forEach(function(i){ add(50 - a[i], "镜像号 50-" + a[i]); });
+  [0,1,2,3,4,5].forEach(function(i){ add(a[i] + b7ds(a[i]), "本码加自身合数 " + a[i] + "+" + b7ds(a[i])); });
+  return out;
+}
+function b7cands(d, want){
+  var raw = b7rules(d), seen = {}, out = [];
+  for (var i = 0; i < raw.length; i++){
+    if (seen[raw[i].n]) continue;
+    seen[raw[i].n] = 1; out.push(raw[i]);
+  }
+  return out.slice(0, Math.max(1, Math.min(30, want || 12)));
+}
+function b7n(){
+  var v = parseInt((document.getElementById("b7-n") || {}).value, 10);
+  return Math.max(1, Math.min(30, v || 12));
+}
+function break7Run(){
+  var box = document.getElementById("b7-out");
+  if (!draws.length){ box.innerHTML = "<div>先载入历史数据。</div>"; return; }
+  var d = draws[draws.length - 1], N = b7n();
+  var cs = b7cands(d, N);
+  var hit = cs.some(function(c){ return c.n === d.special; });
+  var lines = [];
+  lines.push(marketName() + " · 最新第 " + d.issue + " 期");
+  lines.push("平码：" + d.normals.map(pad2).join(" "));
+  var sa = numAttrs(d.special, draws.length - 1);
+  lines.push("特码：" + pad2(d.special) + "　" + sa.zod + "　" + sa.color + "　尾" + sa.tail + "　" + Math.floor(d.special / 10) + "头　合" + sa.sum);
+  lines.push("");
+  lines.push("用这 6 个平码破出来的候选（前 " + N + " 个，按规则顺序，去重）：");
+  cs.forEach(function(c, i){
+    lines.push((i + 1) + ". " + pad2(c.n) + "　← " + c.why);
+  });
+  lines.push("");
+  lines.push("本期实际特码 " + pad2(d.special) + "　→ " + (hit ? "✅ 破中了" : "❌ 没破中"));
+  lines.push("");
+  lines.push("说明：这是数学派生，不是预测。命中率请点「全历史验命中率」看真实数字。");
+  box.innerHTML = "<pre style='margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.9;white-space:pre-wrap;user-select:text;'>" + lines.join("\n") + "</pre>";
+}
+function break7Stats(){
+  var box = document.getElementById("b7-out");
+  if (!draws.length){ box.innerHTML = "<div>先载入历史数据。</div>"; return; }
+  var N = b7n();
+  var hit = 0, total = 0, streak = 0, best = 0, bestAt = "";
+  for (var i = 0; i < draws.length; i++){
+    var cs = b7cands(draws[i], N);
+    if (!cs.length) continue;
+    total++;
+    var ok = cs.some(function(c){ return c.n === draws[i].special; });
+    if (ok){ hit++; streak++; if (streak > best){ best = streak; bestAt = draws[i].issue; } }
+    else streak = 0;
+  }
+  var rate = total ? (hit / total * 100) : 0;
+  var base = N / 49 * 100;
+  var lines = [
+    marketName() + " · 全历史验算（每期用当期 6 平码破、看是否含当期特码）",
+    "样本：" + total + " 期　候选 " + N + " 个（占 49 个号的 " + base.toFixed(2) + "%）",
+    "破中：" + hit + " 期　命中率 " + rate.toFixed(2) + "%",
+    "最长连中：" + best + " 期" + (bestAt ? "（截至第 " + bestAt + " 期）" : ""),
+    "",
+    "对照：随便挑 " + N + " 个号的随机理论命中率是 " + base.toFixed(2) + "%",
+    (rate >= base ? "结论：比随机高 " + (rate - base).toFixed(2) + " 个百分点。" : "结论：比随机低 " + (base - rate).toFixed(2) + " 个百分点，说明这套破数没有预测力。"),
+    "",
+    "期望管理：彩票每期独立，任何加减乘除都只能覆盖一部分号码，不可能“连中很多期”。"
+  ];
+  box.innerHTML = "<pre style='margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.9;white-space:pre-wrap;user-select:text;'>" + lines.join("\n") + "</pre>";
+}
+
+// ===== 特码破数：用 6 个平码做加减乘除/尾数/合数，派生出第 7 个号 =====
 function scoreNums(){
   var c50 = {}, tot = {}, seen = {};
   var from = Math.max(0, draws.length - 60);
@@ -2460,15 +2572,12 @@ function ledgerUsefulHtml(){
   var n7 = last.normals.concat([last.special]);
   var sc = scoreNums();
   var html = "<div class='report' style='padding:10px;font-size:13px;line-height:1.9;'>";
-  // 最新开奖 7 个号码（香港澳门都有）
-  html += "<div style='font-weight:800;margin-bottom:4px;'>最新开奖（" + marketName() + " · 第 " + last.issue + " 期）7 个号码</div>";
+  // 最新开奖：特码（第 7 个号）为主，平码一行带过
+  html += "<div style='font-weight:800;margin-bottom:4px;'>最新开奖（" + marketName() + " · 第 " + last.issue + " 期）</div>";
   html += "<pre style='margin:0 0 10px;font-family:Consolas,monospace;font-size:13px;line-height:1.8;white-space:pre-wrap;user-select:text;'>";
-  html += "号码： " + n7.slice(0,6).map(pad2).join(" ") + " ｜ 特码 " + pad2(last.special) + "\n";
-  html += "生肖： " + n7.slice(0,6).map(function(x){ return zodiacOf(x, idx); }).join(" ") + " ｜ " + drawZodiac(last, idx) + "\n";
-  html += "波色： " + n7.slice(0,6).map(ballColor).join(" ") + " ｜ " + ballColor(last.special) + "\n";
-  html += "尾数： " + n7.slice(0,6).map(function(x){ return x % 10; }).join(" ") + " ｜ " + (last.special % 10) + "\n";
-  html += "头数： " + n7.slice(0,6).map(function(x){ return Math.floor(x / 10); }).join(" ") + " ｜ " + Math.floor(last.special / 10) + "\n";
-  html += "合数： " + n7.slice(0,6).map(function(x){ return Math.floor(x / 10) + x % 10; }).join(" ") + " ｜ " + (Math.floor(last.special / 10) + last.special % 10);
+  html += "特码（第 7 个）： " + pad2(last.special) + "　" + drawZodiac(last, idx) + "　" + ballColor(last.special)
+        + "　尾" + (last.special % 10) + "　" + Math.floor(last.special / 10) + "头　合" + (Math.floor(last.special / 10) + last.special % 10) + "\n";
+  html += "平码（前 6 个，略）： " + n7.slice(0, 6).map(pad2).join(" ");
   html += "</pre>";
   // 六肖（按推荐顺序取号码，凑满 6 个不同的生肖）
   var zmap = {}, zkeys = [];
