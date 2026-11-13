@@ -238,6 +238,12 @@ button.primary:hover { background: var(--accent); }
     </div>
 
     <div class="tab-pane" id="pane-ledger">
+      <div class="row" style="margin-bottom:6px;">
+        <span class="hint" style="margin-right:4px;">学习哪一家：</span>
+        <button class="primary" id="mk-hk" onclick="switchMarket('hk')">🇭🇰 香港六合彩</button>
+        <button class="primary" id="mk-mo" onclick="switchMarket('mo')">🇲🇴 澳门六合彩</button>
+        <span class="hint" id="mk-now" style="margin-left:6px;"></span>
+      </div>
       <div class="row">
         <button class="primary" onclick="ledgerRun(true)">立即结算新期</button>
         <button onclick="ledgerExport()">💾 导出流水</button>
@@ -659,10 +665,55 @@ document.querySelectorAll(".tab").forEach(btn=>{
 });
 
 // ===== 页面操作 =====
+// 香港 / 澳门 两套完全独立：数据、AI 模型、流水、冠军 各存各的，互不覆盖
+window.MARKET = window.MARKET || "hk";
+function mkey(base){ return base + "__" + (window.MARKET === "mo" ? "mo" : "hk"); }
+function marketName(){ return window.MARKET === "mo" ? "澳门" : "香港"; }
+function setMarket(m){ window.MARKET = (m === "mo") ? "mo" : "hk"; try { localStorage.setItem("lottery_market", window.MARKET); } catch(e) {} }
+// 自动判断这份数据是香港还是澳门：先和已存的两家数据比对，没存过就按数据量估
+function detectMarket(d){
+  var pair = [["hk", "lottery_data__hk"], ["mo", "lottery_data__mo"]];
+  var last = String((d[d.length - 1] || {}).issue || "");
+  for (var i = 0; i < pair.length; i++){
+    try {
+      var s = JSON.parse(localStorage.getItem(pair[i][1]) || "null");
+      if (s && s.length === d.length && String((s[s.length - 1] || {}).issue || "") === last) return pair[i][0];
+    } catch(e) {}
+  }
+  if (d.length >= 3000) return "hk";          // 香港累积期数明显多（3600+）
+  if (d.length >= 2000) return "mo";          // 澳门在 2300 左右
+  return (window.MARKET || "hk");
+}
+function mkUi(){
+  try {
+    var now = document.getElementById("mk-now");
+    var hk = document.getElementById("mk-hk"), mo = document.getElementById("mk-mo");
+    if (now) now.textContent = "当前：" + marketName() + "（" + (draws.length || 0) + " 期，独立模型与流水）";
+    if (hk) hk.style.opacity = (window.MARKET === "hk" ? "1" : "0.55");
+    if (mo) mo.style.opacity = (window.MARKET === "mo" ? "1" : "0.55");
+  } catch(e) {}
+}
+// 切换学习对象：两家各有一套数据 + 模型 + 流水 + 冠军，互不影响
+function switchMarket(m){
+  m = (m === "mo") ? "mo" : "hk";
+  setMarket(m);
+  // 内存里先清空，避免把上一家的模型/流水带过来
+  try { LEDGER.rows = []; LEDGER.sig = ""; LEDGER.model = null; LEDGER.pos = null; } catch(e) {}
+  var saved = null;
+  try { saved = localStorage.getItem(mkey("lottery_data")); } catch(e) {}
+  if (saved){
+    try {
+      var d = JSON.parse(saved);
+      if (Array.isArray(d) && d.length){ setData(d); mkUi(); return; }
+    } catch(e) {}
+  }
+  loadRemoteData(m === "mo" ? "mo.txt" : "hk.txt", m === "mo" ? "澳门记录" : "香港记录");
+  mkUi();
+}
 function setData(d){
   draws=d;
   // 保存到浏览器，刷新后不会清空
-  try { localStorage.setItem("lottery_data", JSON.stringify(draws)); } catch(e) {}
+  try { localStorage.setItem(mkey("lottery_data"), JSON.stringify(draws)); } catch(e) {}
   detectYearBoundaries();
   const info = document.getElementById("data-info");
   if(info) info.textContent=`共 ${draws.length} 期：${draws[0]?.issue} → ${draws[draws.length-1]?.issue}`;
@@ -670,6 +721,7 @@ function setData(d){
   renderDrawList();
   renderLatest();
   renderYearIndex();
+  try { mkUi(); } catch(e) {}
   // 数据一进来就自动结算 + 自动出推荐（不用点任何按钮）
   try { setTimeout(function(){ try { if (typeof ledgerRun === "function" && !LEDGER.busy) ledgerRun(false); } catch(e) {} }, 350); } catch(e) {}
 }
@@ -872,7 +924,7 @@ function renderAutoPage(){
   box.innerHTML = "<div style='display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;'>" +
     "<div style='background:#0ea5e9;color:#fff;padding:8px 14px;border-radius:8px;font-size:15px;'><b>最新一期：第 " + last.issue + " 期</b></div>" +
     "<div style='background:#7f1d1d;color:#fff;padding:8px 14px;border-radius:8px;font-size:15px;'><b>下一期：第 " + next + " 期</b></div>" +
-    "<div style='font-size:12px;color:#64748b;'>数据 " + draws.length + " 期 ｜ 上期特码 " + pad2(last.special) + "（" + (last.specialZodiac || "") + "）</div></div>" +
+    "<div style='font-size:12px;color:#64748b;'>" + marketName() + " ｜ 数据 " + draws.length + " 期 ｜ 上期特码 " + pad2(last.special) + "（" + (last.specialZodiac || "") + "）</div></div>" +
     warn + body +
     "<div style='margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;'>" +
     "<button class='primary' onclick='ledgerRun(true)'>🔄 重新算一遍</button>" +
@@ -1230,12 +1282,14 @@ window.addEventListener("scroll", function(){
 
 // 一键载入网页里自带的真实记录
 function loadRemoteData(url, name){
+  // 香港/澳门 两套独立存储：先切市场，再灌数据
+  setMarket(/澳/.test(name) ? "mo" : "hk");
   // 加时间戳，避免浏览器/CDN 缓存拿到旧文件（曾出现缓存导致解析 0 期）
   const bust = url + (url.indexOf("?") >= 0 ? "&" : "?") + "cb=" + Date.now();
   fetch(bust).then(r => r.text()).then(t => {
     const d = parseTxt(t);
     if(!d.length){ alert("载入失败：没解析到数据（" + url + "）"); return; }
-    setData(d); alert("已载入" + name + "，共 " + d.length + " 期（下次打开自动恢复）");
+    setData(d); alert("已载入" + name + "，共 " + d.length + " 期（下次打开自动恢复；与另一市场的数据、AI 学习进度完全分开）");
   }).catch(e => alert("载入失败：" + e.message + "\n请按 Ctrl+Shift+R 刷新后再试"));
 }
 
@@ -1243,7 +1297,8 @@ function importData(){
   const text=document.getElementById("data-input").value; if(!text.trim()){alert("请先粘贴数据");return;}  let d = parseCSV(text);
   if(!d.length) d = parseTxt(text);
   if(!d.length){alert("未解析到有效数据，请检查格式");return;}
-  setData(d); alert(`导入成功，共 ${d.length} 期`);
+  setMarket(detectMarket(d));
+  setData(d); alert(`导入成功，共 ${d.length} 期（已自动归到「${marketName()}」学习库）`);
 }
 
 function clearData() {
@@ -1262,8 +1317,9 @@ function handleFile(file) {
     let d = parseCSV(text);
     if(!d.length) d = parseTxt(text);
     if(!d.length){alert("未解析到有效数据，请检查文件格式");return;}
+    setMarket(detectMarket(d));
     setData(d);
-    alert(`导入成功！共 ${d.length} 期`);
+    alert(`导入成功！共 ${d.length} 期（自动归到「${marketName()}」学习库，与另一家完全分开）`);
   };
   reader.readAsText(file);
 }
@@ -1579,9 +1635,22 @@ try {
   }
 } catch(e) {}
 
-// 从浏览器读取历史数据，刷新后不会清空
+// 恢复上次是香港还是澳门
+try { var mk = localStorage.getItem("lottery_market"); if (mk) window.MARKET = (mk === "mo" ? "mo" : "hk"); } catch(e) {}
+// 老版本只有一个共享键：按数据量判断归属，自动分到香港/澳门，不丢数据、不串门
 try {
-  const saved = localStorage.getItem("lottery_data");
+  if (!localStorage.getItem("lottery_data__hk") && localStorage.getItem("lottery_data")) {
+    var lg = JSON.parse(localStorage.getItem("lottery_data") || "[]");
+    if (Array.isArray(lg) && lg.length) {
+      var lgKey = (lg.length >= 3000 ? "lottery_data__hk" : "lottery_data__mo");
+      localStorage.setItem(lgKey, JSON.stringify(lg));
+      // 老键保留一份做备份，不再参与读写
+    }
+  }
+} catch(e) {}
+// 从浏览器读取历史数据，刷新后不会清空（港澳各存各的）
+try {
+  var saved = localStorage.getItem(mkey("lottery_data"));
   if(saved) {
     const d = JSON.parse(saved);
     if(Array.isArray(d) && d.length > 0) {
@@ -1595,6 +1664,17 @@ try {
       }
     }
   }
+} catch(e) {}
+// 自动载入：上次用的是香港就自动载香港，上次是澳门就自动载澳门，不用点按钮
+try {
+  setTimeout(function(){
+    try {
+      if (typeof draws !== "undefined" && !draws.length){
+        if (window.MARKET === "mo") loadRemoteData("mo.txt", "澳门记录");
+        else loadRemoteData("hk.txt", "香港记录");
+      }
+    } catch(e) {}
+  }, 900);
 } catch(e) {}
 // ===== AI 竞技评测：多个预测引擎 + 自我学习引擎，同场跑同一段历史 =====
 var ARENA = { running:false, agg:null, total:0, round:0, rounds:0, span:1500, seed:1, pre:null, preN:-1 };
@@ -1960,12 +2040,12 @@ function arenaSaveChampion(snap){
     var top = snap.rows[0];
     var rec = { model: top.model, top18: top.top18, top6: top.top6, top1: top.top1,
                 preds: snap.totalPreds, rounds: snap.round, span: snap.span, at: snap.at };
-    localStorage.setItem("ai_champion", JSON.stringify(rec));
+    localStorage.setItem(mkey("ai_champion"), JSON.stringify(rec));
   } catch(e){}
 }
 function arenaChampion(){
   try {
-    var s = localStorage.getItem("ai_champion");
+    var s = localStorage.getItem(mkey("ai_champion"));
     if (s) return JSON.parse(s);
   } catch(e){}
   return null;
@@ -2132,13 +2212,17 @@ function nnFromJSON(o){
 }
 function ledgerLoad(){
   try {
-    var m = localStorage.getItem("ai_nn_model");
+    var m = localStorage.getItem(mkey("ai_nn_model"));
+    if (!m && window.MARKET === "hk") m = localStorage.getItem("ai_nn_model");
     if (m) LEDGER.model = nnFromJSON(JSON.parse(m));
-    var r = localStorage.getItem("ai_ledger");
+    var r = localStorage.getItem(mkey("ai_ledger"));
+    if (!r && window.MARKET === "hk") r = localStorage.getItem("ai_ledger");
     if (r) LEDGER.rows = JSON.parse(r) || [];
-    var s = localStorage.getItem("ai_ledger_sig");
+    var s = localStorage.getItem(mkey("ai_ledger_sig"));
+    if (!s && window.MARKET === "hk") s = localStorage.getItem("ai_ledger_sig");
     if (s) LEDGER.sig = s;
-    var ps = localStorage.getItem("ai_ledger_pos");
+    var ps = localStorage.getItem(mkey("ai_ledger_pos"));
+    if (!ps && window.MARKET === "hk") ps = localStorage.getItem("ai_ledger_pos");
     if (ps) LEDGER.pos = JSON.parse(ps);
   } catch(e) {}
   if (!LEDGER.model){
@@ -2149,10 +2233,10 @@ function ledgerLoad(){
 }
 function ledgerSave(){
   try {
-    localStorage.setItem("ai_nn_model", JSON.stringify(nnToJSON(LEDGER.model)));
-    localStorage.setItem("ai_ledger", JSON.stringify(LEDGER.rows.slice(-400)));
-    localStorage.setItem("ai_ledger_sig", LEDGER.sig);
-    localStorage.setItem("ai_ledger_pos", JSON.stringify(LEDGER.pos || {}));
+    localStorage.setItem(mkey("ai_nn_model"), JSON.stringify(nnToJSON(LEDGER.model)));
+    localStorage.setItem(mkey("ai_ledger"), JSON.stringify(LEDGER.rows.slice(-400)));
+    localStorage.setItem(mkey("ai_ledger_sig"), LEDGER.sig);
+    localStorage.setItem(mkey("ai_ledger_pos"), JSON.stringify(LEDGER.pos || {}));
   } catch(e) {}
 }
 function ledgerRun(manual){
@@ -2286,7 +2370,7 @@ function ledgerUsefulHtml(){
   var sc = scoreNums();
   var html = "<div class='report' style='padding:10px;font-size:13px;line-height:1.9;'>";
   // 最新开奖 7 个号码（香港澳门都有）
-  html += "<div style='font-weight:800;margin-bottom:4px;'>最新开奖（第 " + last.issue + " 期）7 个号码</div>";
+  html += "<div style='font-weight:800;margin-bottom:4px;'>最新开奖（" + marketName() + " · 第 " + last.issue + " 期）7 个号码</div>";
   html += "<pre style='margin:0 0 10px;font-family:Consolas,monospace;font-size:13px;line-height:1.8;white-space:pre-wrap;user-select:text;'>";
   html += "号码： " + n7.slice(0,6).map(pad2).join(" ") + " ｜ 特码 " + pad2(last.special) + "\n";
   html += "生肖： " + n7.slice(0,6).map(function(x){ return zodiacOf(x, idx); }).join(" ") + " ｜ " + drawZodiac(last, idx) + "\n";
@@ -2360,7 +2444,7 @@ function ledgerExport(){
 function ledgerReset(){
   if (!confirm("清空流水并重新训练模型？（历史数据不受影响）")) return;
   LEDGER.rows = []; LEDGER.sig = ""; LEDGER.model = null; LEDGER.pos = null;
-  try { localStorage.removeItem("ai_nn_model"); localStorage.removeItem("ai_ledger"); localStorage.removeItem("ai_ledger_sig"); localStorage.removeItem("ai_ledger_pos"); } catch(e) {}
+  try { localStorage.removeItem(mkey("ai_nn_model")); localStorage.removeItem(mkey("ai_ledger")); localStorage.removeItem(mkey("ai_ledger_sig")); localStorage.removeItem(mkey("ai_ledger_pos")); } catch(e) {}
   ledgerLoad(); ledgerSave(); ledgerRender();
 }
 
