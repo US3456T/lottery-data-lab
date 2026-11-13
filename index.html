@@ -203,6 +203,7 @@ button.primary:hover { background: var(--accent); }
         <label>跑多少轮：</label>
         <input type="text" id="arena-rounds" value="20" style="width:70px">
         <button class="primary" onclick="arenaStart()">开始竞技</button>
+        <button onclick="arenaResume()" id="arena-resume" style="display:none;">接着上次跑</button>
         <button onclick="arenaStop()">停止</button>
         <button onclick="arenaSave()">💾 导出结果</button>
       </div>
@@ -661,7 +662,7 @@ function openChecked(){
 
 // ===== Tab切换 =====
 document.querySelectorAll(".tab").forEach(btn=>{
-  btn.onclick=()=>{document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));document.querySelectorAll(".tab-pane").forEach(p=>p.classList.remove("active"));btn.classList.add("active");document.getElementById("pane-"+btn.dataset.tab).classList.add("active"); if(btn.dataset.tab==="auto"){ try{ renderAutoPage(); }catch(e){} } };
+  btn.onclick=()=>{document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));document.querySelectorAll(".tab-pane").forEach(p=>p.classList.remove("active"));btn.classList.add("active");document.getElementById("pane-"+btn.dataset.tab).classList.add("active"); if(btn.dataset.tab==="auto"){ try{ renderAutoPage(); }catch(e){} } if(btn.dataset.tab==="arena"){ try{ arenaRestore(); }catch(e){} } };
 });
 
 // ===== 页面操作 =====
@@ -721,7 +722,7 @@ function switchMarket(m){
   if (saved){
     try {
       var d = JSON.parse(saved);
-      if (Array.isArray(d) && d.length){ setData(d); mkUi(); return; }
+      if (Array.isArray(d) && d.length){ setData(d); try { arenaRestore(); } catch(e) {} mkUi(); return; }
     } catch(e) {}
   }
   loadRemoteData(m === "mo" ? "mo.txt" : "hk.txt", m === "mo" ? "澳门记录" : "香港记录");
@@ -2015,13 +2016,77 @@ function arenaTrial(seed, span){
   return { hit: hit, span: end - start };
 }
 
+// ===== 竞技记忆：设置、进度、上次结果都存起来，重开还在 =====
+function arenaStore(extra){
+  try {
+    var o = { span: ARENA.span, rounds: ARENA.rounds, round: ARENA.round, total: ARENA.total,
+              seed: ARENA.seed, agg: ARENA.agg, dataLen: (typeof draws !== "undefined" ? draws.length : 0),
+              at: new Date().toLocaleString(), finished: !ARENA.running && ARENA.round >= ARENA.rounds };
+    localStorage.setItem(mkey("arena"), JSON.stringify(o));
+  } catch(e) {}
+}
+function arenaRecall(){
+  try { return JSON.parse(localStorage.getItem(mkey("arena")) || "null"); } catch(e) { return null; }
+}
+function arenaCfgSave(){
+  try {
+    localStorage.setItem(mkey("arena_cfg"), JSON.stringify({
+      span: document.getElementById("arena-span").value,
+      rounds: document.getElementById("arena-rounds").value
+    }));
+  } catch(e) {}
+}
+// 打开页面时把上次的期数/轮数、跑到哪、上次结果都还原
+function arenaRestore(){
+  var cfg = null;
+  try { cfg = JSON.parse(localStorage.getItem(mkey("arena_cfg")) || "null"); } catch(e) {}
+  if (cfg){
+    var sp = document.getElementById("arena-span"), rd = document.getElementById("arena-rounds");
+    if (sp && cfg.span) sp.value = cfg.span;
+    if (rd && cfg.rounds) rd.value = cfg.rounds;
+  }
+  var rec = arenaRecall();
+  var btn = document.getElementById("arena-resume");
+  if (!rec) { if (btn) btn.style.display = "none"; return; }
+  ARENA.span = rec.span || ARENA.span;
+  ARENA.rounds = rec.rounds || ARENA.rounds;
+  ARENA.round = rec.round || 0;
+  ARENA.total = rec.total || 0;
+  ARENA.seed = rec.seed || 1;
+  ARENA.agg = rec.agg || null;
+  ARENA.restored = true;
+  ARENA.restoredAt = rec.at;
+  ARENA.restoredFinished = !!rec.finished;
+  if (btn && !rec.finished && rec.round < rec.rounds && rec.dataLen === (typeof draws !== "undefined" ? draws.length : -1)){
+    btn.style.display = "";
+    btn.textContent = "接着上次跑（" + rec.round + "/" + rec.rounds + " 轮）";
+    ARENA.canResume = true;
+  } else if (btn) btn.style.display = "none";
+  arenaRender();
+}
+function arenaResume(){
+  var rec = arenaRecall();
+  if (!rec || !draws.length){ alert("没有可接着跑的进度"); return; }
+  if (rec.dataLen !== draws.length){ alert("数据换了（上次 " + rec.dataLen + " 期，现在 " + draws.length + " 期），只能重新开始"); return; }
+  ARENA.span = rec.span; ARENA.rounds = rec.rounds; ARENA.round = rec.round || 0;
+  ARENA.total = rec.total || 0; ARENA.seed = rec.seed || 1; ARENA.agg = rec.agg || {};
+  ARENA.restored = false;
+  ARENA.sp = null; ARENA.pre = null; ARENA.preN = -1;
+  arenaBuildPre();
+  ARENA.running = true; arenaTick();
+}
+try { ["arena-span","arena-rounds"].forEach(function(id){ var el = document.getElementById(id); if (el) el.addEventListener("change", arenaCfgSave); }); } catch(e) {}
+
 function arenaStart(){
   if (ARENA.running) return;
   if (!draws.length){ alert("请先在【历史数据】里载入数据"); return; }
   ARENA.span = Math.max(200, parseInt(document.getElementById("arena-span").value, 10) || 1500);
   ARENA.rounds = Math.max(1, parseInt(document.getElementById("arena-rounds").value, 10) || 20);
+  arenaCfgSave();
   if (ARENA.span > draws.length - 70) ARENA.span = Math.max(200, draws.length - 70);
   ARENA.running = true; ARENA.total = 0; ARENA.round = 0; ARENA.seed = 1;
+  ARENA.restored = false; ARENA.canResume = false;
+  var rb = document.getElementById("arena-resume"); if (rb) rb.style.display = "none";
   ARENA.agg = {};
   ["🧠 神经网络(MLP)","🔁 循环网络(RNN)","🧭 KNN相似期","🎯 Q学习强化","📊 贝叶斯在线","🧬 遗传算法","⚖️ 集成堆叠","马尔可夫1阶","马尔可夫2阶","热号(近50)","遗漏回补","随机基线"].forEach(function(nm){
     ARENA.agg[nm] = {t1:0,t6:0,t18:0};
@@ -2045,8 +2110,11 @@ function arenaTick(){
     }
   }
   arenaRender();
-  if (ARENA.round < ARENA.rounds) setTimeout(arenaTick, 0);
-  else { ARENA.running = false; ARENA.lastResult = arenaSnapshot(); arenaSaveChampion(ARENA.lastResult); }
+  if (ARENA.round < ARENA.rounds){
+    if (ARENA.round % 10 === 0) arenaStore();   // 每 10 轮存一次进度，关掉也记得
+    setTimeout(arenaTick, 0);
+  }
+  else { ARENA.running = false; ARENA.lastResult = arenaSnapshot(); arenaSaveChampion(ARENA.lastResult); arenaStore(); }
 }
 
 // 冠军自动选举：把实测排名第一的引擎记下来，供页面长期使用
@@ -2099,6 +2167,12 @@ function arenaRender(){
   var snap = arenaSnapshot();
   var bar = function(v, base){ return "<div style='background:#e5e7eb;height:10px;border-radius:5px;width:110px;display:inline-block;vertical-align:middle;'><div style='background:" + (v >= base ? "#16a34a" : "#9ca3af") + ";height:10px;border-radius:5px;width:" + Math.min(100, v / 50 * 100) + "%'></div></div>"; };
   var html = "";
+  if (ARENA.restored){
+    html += "<div style='margin-bottom:8px;padding:8px;border:1px dashed #0ea5e9;border-radius:6px;background:#f0f9ff;font-size:12px;line-height:1.7;color:#075985;'>"
+          + "📌 上次记录：每轮 " + ARENA.span + " 期，跑到 " + ARENA.round + " / " + ARENA.rounds + " 轮，已做 " + (ARENA.total || 0).toLocaleString() + " 次预测"
+          + (ARENA.restoredFinished ? "（已跑完）" : "（没跑完，可点「接着上次跑」继续）")
+          + "　存于 " + (ARENA.restoredAt || "") + "<br>下面是当时跑出来的名次，不是这次新跑的。</div>";
+  }
   var ch = arenaChampion();
   if (ch){
     html += "<div style='margin-bottom:8px;padding:8px;border:1px solid #16a34a;border-radius:6px;background:#f0fdf4;font-size:12px;line-height:1.7;'>"
@@ -2117,7 +2191,7 @@ function arenaRender(){
   out.innerHTML = html;
 }
 
-function arenaStop(){ ARENA.running = false; arenaRender(); }
+function arenaStop(){ ARENA.running = false; arenaSaveChampion(arenaSnapshot()); arenaStore(); arenaRender(); }
 
 function arenaSave(){
   var snap = ARENA.lastResult || arenaSnapshot();
