@@ -2295,6 +2295,19 @@ function ledgerUsefulHtml(){
   html += "头数： " + n7.slice(0,6).map(function(x){ return Math.floor(x / 10); }).join(" ") + " ｜ " + Math.floor(last.special / 10) + "\n";
   html += "合数： " + n7.slice(0,6).map(function(x){ return Math.floor(x / 10) + x % 10; }).join(" ") + " ｜ " + (Math.floor(last.special / 10) + last.special % 10);
   html += "</pre>";
+  // 六肖（按推荐顺序取号码，凑满 6 个不同的生肖）
+  var zmap = {}, zkeys = [];
+  for (var zi = 0; zi < sc.length && zkeys.length < 6; zi++){
+    var zn = sc[zi].n, zz = zodiacOf(zn, idx);
+    if (!zmap[zz]) { zmap[zz] = []; zkeys.push(zz); }
+    if (zmap[zz].indexOf(pad2(zn)) < 0) zmap[zz].push(pad2(zn));
+  }
+  html += "<div style='font-weight:800;margin-top:8px;color:#0f172a;'>下一期（第 " + pad3(parseInt(last.issue, 10) + 1) + " 期）六肖（按推荐顺序取满 6 个不同的生肖）</div>";
+  html += "<pre style='margin:2px 0 10px;font-family:Consolas,monospace;font-size:13px;line-height:1.9;white-space:pre-wrap;user-select:text;color:#7a2e00;font-weight:700;'>";
+  html += "六肖： " + zkeys.join(" ") + "\n";
+  html += "号码来源： " + zkeys.map(function(z){ return z + "(" + zmap[z].join(" ") + ")"; }).join("  ") + "\n";
+  html += "共 6 个肖，每个肖号码互不重复";
+  html += "</pre>";
   // 24 / 18 / 12 三档
   [24, 18, 12].forEach(function(k){
     html += "<div style='font-weight:800;margin-top:8px;color:#0f172a;'>下一期（第 " + pad3(parseInt(last.issue, 10) + 1) + " 期）" + k + " 码清单（" + k + " 个，互不重复）</div>";
