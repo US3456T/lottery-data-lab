@@ -755,6 +755,13 @@ function switchMarket(m){
   setMarket(m);
   // 内存里先清空，避免把上一家的模型/流水带过来
   try { LEDGER.rows = []; LEDGER.sig = ""; LEDGER.model = null; LEDGER.pos = null; } catch(e) {}
+  // 特码 AI 与竞技：都换成这一家自己的（下一期清单跟着市场走）
+  try {
+    B7.m = null; B7.val = null; B7.epoch = 0; B7.samples = 0; B7.dataLen = 0; B7.track = []; B7.savedAt = ""; B7.running = false; B7.busy = false;
+    b7Load();
+    b7Render();
+  } catch(e) {}
+  try { ARENA.lastPreds = null; ARENA.lastResult = null; ARENA.agg = null; ARENA.round = 0; ARENA.total = 0; } catch(e) {}
   var saved = null;
   try { saved = localStorage.getItem(mkey("lottery_data")); } catch(e) {}
   if (saved){
@@ -2387,22 +2394,31 @@ function arenaNextBlock(){
     if (!zm[z]){ zm[z] = []; zs.push(z); }
     if (zm[z].indexOf(pad2(list24[t])) < 0) zm[z].push(pad2(list24[t]));
   }
+  // 生肖不足 10 个时，按剩余生肖里"最靠前号码"的顺序补齐（仍然是引擎排名派生，不外加规则）
+  if (zs.length < 10){
+    var rest = [];
+    for (var rz = 1; rz <= 49; rz++){
+      var z3 = zodiacOf(rz, nIdx);
+      if (zs.indexOf(z3) < 0 && rest.indexOf(z3) < 0) rest.push(z3);
+    }
+    rest.forEach(function(z4){ if (zs.length < 10) zs.push(z4); });
+  }
   var asc = function(arr){ return arr.slice().sort(function(a, b){ return a - b; }).map(pad2).join(" "); };
   var out = [];
-  out.push("【下一期 · 第 " + nextIssueNo(lastIssue) + " 期 · 冠军引擎「" + ch.model + "」口径】");
+  out.push("【下一期 · " + marketName() + " · 第 " + nextIssueNo(lastIssue) + " 期 · 冠军引擎「" + ch.model + "」口径】");
   out.push("首选特码（第 7 个）：" + att(base[0]));
   out.push("");
-  out.push("10 肖：" + zs.join(" "));
-  out.push("6 肖：" + zs.slice(0, 6).join(" "));
-  out.push("生肖号码来源：" + zs.map(function(z2){ return z2 + "(" + zm[z2].join(" ") + ")"; }).join("  "));
+  out.push("10 肖（热→冷）：" + zs.join(" "));
+  out.push("6 肖（热→冷）：" + zs.slice(0, 6).join(" "));
+  out.push("生肖号码来源（每肖的号从小到大）：" + zs.map(function(z2){ return z2 + "(" + asc(zm[z2] || []) + ")"; }).join("  "));
   out.push("24 码（从小到大）：" + asc(list24.slice(0, 24)));
   out.push("18 码（从小到大）：" + asc(base.slice(0, 18)));
   out.push("12 码（从小到大）：" + asc(base.slice(0, 12)));
   var pk = base.slice(1, 7);
   out.push("");
-  out.push("6 个平码（前 6 个，避开首选特码）：" + asc(pk));
+  out.push("6 个平码（前 6 个，避开首选特码，从小到大）：" + asc(pk));
   out.push("  明细：" + pk.map(att).join("　｜　"));
-  out.push("（全部是冠军引擎自己跑出来的排名，没有外加任何手工规则；下一期是重新抽号，命中率看上面表格。）");
+  out.push("（号码一律从小到大排；生肖顺序＝冠军引擎自己排名的先后，越靠前越热。全部是它自己跑出来的，没有外加任何手工规则；下一期是重新抽号，命中率看上面表格。）");
   return out.join("\n");
 }
 function arenaStop(){ ARENA.running = false; arenaSaveChampion(arenaSnapshot()); arenaArchive(arenaSnapshot()); arenaStore(); arenaRender(); }
@@ -2987,7 +3003,7 @@ function b7Render(head){  var box = document.getElementById("b7-out");
     };
     // ===== 下一期排最前面 =====
     lines.push("");
-    lines.push("【下一期 · 第 " + nxtIssue + " 期 · 特码（第 7 个）】");
+    lines.push("【下一期 · " + marketName() + " · 第 " + nxtIssue + " 期 · 特码（第 7 个）】");
     lines.push("首选特码：" + pad2(ord0[0].n) + "　" + att(ord0[0].n) + "　概率 " + (ord0[0].p * 100).toFixed(2) + "%");
     if (ord0[1]) lines.push("备选特码：" + pad2(ord0[1].n) + "　" + att(ord0[1].n) + "　概率 " + (ord0[1].p * 100).toFixed(2) + "%");
     if (ord0[2]) lines.push("第三候选：" + pad2(ord0[2].n) + "　" + att(ord0[2].n) + "　概率 " + (ord0[2].p * 100).toFixed(2) + "%");
