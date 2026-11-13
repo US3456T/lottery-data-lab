@@ -241,12 +241,11 @@ button.primary:hover { background: var(--accent); }
 
     <div class="tab-pane" id="pane-break7">
       <div class="row" style="gap:8px;flex-wrap:wrap;">
-        <button class="primary" onclick="break7Run()">🔢 用本期 6 个平码破特码</button>
-        <label style="font-size:12px;">候选个数：</label>
-        <input type="text" id="b7-n" value="12" style="width:60px">
-        <button onclick="break7Stats()">📈 全历史验命中率</button>
+        <button class="primary" onclick="b7StartTrain()">🧠 开始学习（6 平码 → 第 7 个号）</button>
+        <button onclick="b7StopTrain()">暂停并验证</button>
+        <button onclick="b7ResetModel()">权重归零重学</button>
       </div>
-      <div class="row"><span class="hint">规则：把 6 个平码做加、减、和值、尾数和、合数和、生肖位、镜像数等运算，得出候选特码；再拿历史每一期验证“用当期 6 平码能不能推出当期特码”。数字是死的，命中率如实报，不吹。</span></div>
+      <div class="row"><span class="hint">这是一个真在学的神经网络：输入 6 个平码，输出 49 个号各自的概率，权重由<b>全部历史开奖记录</b>自己训练（数据一变就用全历史续学），<b>没有任何人工加减乘除规则</b>。只有最新 200 期留出来、从不参与训练，专门验真假。</span></div>
       <div id="b7-out" class="report" style="padding:8px;"></div>
     </div>
 
@@ -674,7 +673,7 @@ function openChecked(){
 
 // ===== Tab切换 =====
 document.querySelectorAll(".tab").forEach(btn=>{
-  btn.onclick=()=>{document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));document.querySelectorAll(".tab-pane").forEach(p=>p.classList.remove("active"));btn.classList.add("active");document.getElementById("pane-"+btn.dataset.tab).classList.add("active"); if(btn.dataset.tab==="auto"){ try{ renderAutoPage(); }catch(e){} } if(btn.dataset.tab==="arena"){ try{ arenaRestore(); }catch(e){} } if(btn.dataset.tab==="break7"){ try{ break7Run(); }catch(e){} } };
+  btn.onclick=()=>{document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));document.querySelectorAll(".tab-pane").forEach(p=>p.classList.remove("active"));btn.classList.add("active");document.getElementById("pane-"+btn.dataset.tab).classList.add("active"); if(btn.dataset.tab==="auto"){ try{ renderAutoPage(); }catch(e){} } if(btn.dataset.tab==="arena"){ try{ arenaRestore(); }catch(e){} } if(btn.dataset.tab==="break7"){ try{ if(!B7.m) b7Load(); b7Init(false); b7Render(); b7AutoCheck(); }catch(e){} } };
 });
 
 // ===== 页面操作 =====
@@ -754,6 +753,8 @@ function setData(d){
   try { mkUi(); } catch(e) {}
   // 数据一进来就自动结算 + 自动出推荐（不用点任何按钮）
   try { setTimeout(function(){ try { if (typeof ledgerRun === "function" && !LEDGER.busy) ledgerRun(false); } catch(e) {} }, 350); } catch(e) {}
+  // 特码 AI：数据变了就自己续学（按市场分开存，互不干扰）
+  try { setTimeout(function(){ try { if (typeof b7AutoCheck === "function") b7AutoCheck(); } catch(e) {} }, 900); } catch(e) {}
 }
 
 // 汇总每年换肖段：{year, yz, issue}
@@ -2488,27 +2489,269 @@ function b7n(){
   var v = parseInt((document.getElementById("b7-n") || {}).value, 10);
   return Math.max(1, Math.min(30, v || 12));
 }
-function break7Run(){
+// ===== 特码 AI（真学习：6 个平码 → 第 7 个号，权重自己练，不写死任何人工规则）=====
+var B7 = { D: 294, H: 16, O: 49, m: null, epoch: 0, epochs: 40, running: false, timer: null,
+           val: null, trained: 0, lr: 0.35, xbuf: null, t0: 0, hold: 200, win: 1200,
+           dataLen: 0, track: [], autoOn: true, busy: false };
+
+function b7seedRnd(seed){
+  return function(){ seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; seed = seed >>> 0; return seed / 4294967296; };
+}
+function b7Init(force){
+  if (!force && B7.m) return;
+  var D = B7.D, H = B7.H, O = B7.O, rnd = b7seedRnd(20261113);
+  var W1 = new Float64Array(D * H), b1 = new Float64Array(H);
+  var W2 = new Float64Array(H * O), b2 = new Float64Array(O);
+  for (var i = 0; i < D * H; i++) W1[i] = (rnd() - 0.5) * 0.14;
+  for (var j = 0; j < H * O; j++) W2[j] = (rnd() - 0.5) * 0.3;
+  B7.m = { W1: W1, b1: b1, W2: W2, b2: b2, n: 0 };
+  B7.epoch = 0;
+}
+function b7X(normals){
+  var x = B7.xbuf || (B7.xbuf = new Float64Array(B7.D));
+  x.fill(0);
+  for (var i = 0; i < 6; i++){
+    var n = normals[i];
+    if (n >= 1 && n <= 49) x[i * 49 + (n - 1)] = 1;
+  }
+  return x;
+}
+// 前向 + 反向一次，返回预测的概率数组
+function b7Step(normals, truth, train){
+  var D = B7.D, H = B7.H, O = B7.O, m = B7.m;
+  var x = b7X(normals);
+  var h = B7._h || (B7._h = new Float64Array(H));
+  var pRaw = B7._p || (B7._p = new Float64Array(O));
+  for (var j = 0; j < H; j++){
+    var s = m.b1[j];
+    var off = j;
+    for (var i = 0; i < D; i++) s += m.W1[i * H + j] * x[i];
+    h[j] = s > 0 ? s : 0;
+  }
+  for (var k = 0; k < O; k++){
+    var s2 = m.b2[k];
+    var off2 = k;
+    for (var j2 = 0; j2 < H; j2++) s2 += m.W2[j2 * O + k] * h[j2];
+    pRaw[k] = s2;
+  }
+  var mx = -1e9, i2;
+  for (i2 = 0; i2 < O; i2++) if (pRaw[i2] > mx) mx = pRaw[i2];
+  var sum = 0;
+  for (i2 = 0; i2 < O; i2++){ pRaw[i2] = Math.exp(pRaw[i2] - mx); sum += pRaw[i2]; }
+  for (i2 = 0; i2 < O; i2++) pRaw[i2] /= sum;
+  if (!train) return pRaw;
+  // 交叉熵梯度
+  var dl = B7._dl || (B7._dl = new Float64Array(O));
+  for (i2 = 0; i2 < O; i2++) dl[i2] = pRaw[i2] - (i2 === truth - 1 ? 1 : 0);
+  var dh = B7._dh || (B7._dh = new Float64Array(H));
+  for (var j3 = 0; j3 < H; j3++){
+    var g = 0;
+    for (var k2 = 0; k2 < O; k2++) g += m.W2[j3 * O + k2] * dl[k2];
+    dh[j3] = h[j3] > 0 ? g : 0;
+  }
+  var lr = B7.lr;
+  for (var k4 = 0; k4 < O; k4++){
+    for (var j5 = 0; j5 < H; j5++) m.W2[j5 * O + k4] -= lr * dl[k4] * h[j5];
+    m.b2[k4] -= lr * dl[k4];
+  }
+  for (var j6 = 0; j6 < H; j6++){
+    for (var i3 = 0; i3 < D; i3++) if (x[i3]) m.W1[i3 * H + j6] -= lr * dh[j6];
+    m.b1[j6] -= lr * dh[j6];
+  }
+  m.n++;
+  return pRaw;
+}
+function b7trainIdx(list){
+  var rnd = B7._rnd || (B7._rnd = b7seedRnd(99887766));
+  var order = list.map(function(_, i){ return i; });
+  for (var i = order.length - 1; i > 0; i--){ var j = Math.floor(rnd() * (i + 1)); var t = order[i]; order[i] = order[j]; order[j] = t; }
+  return order;
+}
+function b7Epoch(list){
+  var src = list || b7Split().train;
+  var tr = b7trainIdx(src);
+  for (var i = 0; i < tr.length; i++){
+    var d = src[tr[i]];
+    b7Step(d.normals, d.special, true);
+  }
+  B7.epoch++;
+}
+function b7Split(){
+  var all = draws.filter(function(d){ return d.normals && d.normals.length >= 6 && d.special >= 1 && d.special <= 49; });
+  var hold = Math.min(B7.hold || 200, Math.floor(all.length * 0.2));
+  return { train: all.slice(0, all.length - hold), test: all.slice(all.length - hold), all: all };
+}
+// 学习参考 = 全部历史开奖记录（只把最新 200 期留出来验真假），不做窗口截断
+function b7Window(){
+  return b7Split().train;
+}
+function b7Validate(){
+  var split = b7Split(), test = split.test;
+  if (!test.length) return null;
+  var k = [1, 6, 12, 18];
+  var hit = { 1: 0, 6: 0, 12: 0, 18: 0 };
+  for (var i = 0; i < test.length; i++){
+    var p = b7Step(test[i].normals, test[i].special, false);
+    var order = [];
+    for (var n = 0; n < 49; n++) order.push({ n: n + 1, p: p[n] });
+    order.sort(function(a, b){ return b.p - a.p; });
+    for (var q = 0; q < k.length; q++){
+      var topN = order.slice(0, k[q]).map(function(o){ return o.n; });
+      if (topN.indexOf(test[i].special) >= 0) hit[k[q]]++;
+    }
+  }
+  var res = { n: test.length, train: split.train.length };
+  k.forEach(function(x){ res["top" + x] = hit[x] / test.length * 100; });
+  return res;
+}
+function b7Render(head){
   var box = document.getElementById("b7-out");
-  if (!draws.length){ box.innerHTML = "<div>先载入历史数据。</div>"; return; }
-  var d = draws[draws.length - 1], N = b7n();
-  var cs = b7cands(d, N);
-  var hit = cs.some(function(c){ return c.n === d.special; });
+  if (!box) return;
   var lines = [];
-  lines.push(marketName() + " · 最新第 " + d.issue + " 期");
-  lines.push("平码：" + d.normals.map(pad2).join(" "));
-  var sa = numAttrs(d.special, draws.length - 1);
-  lines.push("特码：" + pad2(d.special) + "　" + sa.zod + "　" + sa.color + "　尾" + sa.tail + "　" + Math.floor(d.special / 10) + "头　合" + sa.sum);
-  lines.push("");
-  lines.push("用这 6 个平码破出来的候选（前 " + N + " 个，按规则顺序，去重）：");
-  cs.forEach(function(c, i){
-    lines.push((i + 1) + ". " + pad2(c.n) + "　← " + c.why);
-  });
-  lines.push("");
-  lines.push("本期实际特码 " + pad2(d.special) + "　→ " + (hit ? "✅ 破中了" : "❌ 没破中"));
-  lines.push("");
-  lines.push("说明：这是数学派生，不是预测。命中率请点「全历史验命中率」看真实数字。");
+  if (head) lines.push(head), lines.push("");
+  lines.push(marketName() + " · 训练进度 " + B7.epoch + " / " + B7.epochs + " 轮"
+            + (B7.running ? "（正在学…）" : (B7.epoch >= B7.epochs && B7.epoch ? "（已练完）" : "（还没练）")));
+  var split = b7Split();
+  lines.push("样本：" + (split.train.length + split.test.length) + " 期　训练用前面的 " + split.train.length
+            + " 期　留出最新 " + split.test.length + " 期从不参与训练，只用来看真假");
+  lines.push("记忆：" + (B7.savedAt ? "已于 " + B7.savedAt + " 存过权重（市场：" + marketName() + "，存盘时 " + B7.dataLen + " 期）" : "还没存过权重（第一次学完会自动存）")
+            + "　自动跟踪：" + (B7.autoOn ? "开（数据一变就用全历史自己续学 3 轮）" : "关"));
+  if (B7.track.length){
+    var prev = B7.track.length > 1 ? B7.track[B7.track.length - 2] : null;
+    var cur = B7.track[B7.track.length - 1];
+    lines.push("");
+    lines.push("【跟踪记录 · 最近 " + B7.track.length + " 次】");
+    B7.track.slice(-3).forEach(function(t){
+      lines.push(" " + t.at + "　" + t.n + " 期 / 到第 " + t.issue + " 期　Top12 " + t.top12 + "%　Top18 " + t.top18 + "%");
+    });
+    if (prev){
+      var d12 = +(cur.top12 - prev.top12).toFixed(2);
+      lines.push(" 这次比上次：Top12 " + (d12 >= 0 ? "+" : "") + d12 + " 个百分点" + (Math.abs(d12) < 0.6 ? "（基本没变，说明新数据没带来可用规律）" : ""));
+    }
+  }
+  if (B7.val){
+    lines.push("");
+    lines.push("【留出验证 · 这段数据训练时没用过】");
+    lines.push("只看 1 个号（Top1）：" + B7.val.top1.toFixed(2) + "%　随机 2.04%");
+    lines.push("给 6 个号（Top6）：" + B7.val.top6.toFixed(2) + "%　随机 12.24%");
+    lines.push("给 12 个号（Top12）：" + B7.val.top12.toFixed(2) + "%　随机 24.49%");
+    lines.push("给 18 个号（Top18）：" + B7.val.top18.toFixed(2) + "%　随机 36.73%");
+  }
+  if (draws.length){
+    var last = draws[draws.length - 1];
+    var p = b7Step(last.normals, last.special, false);
+    var order = [];
+    for (var n = 0; n < 49; n++) order.push({ n: n + 1, p: p[n] });
+    order.sort(function(a, b){ return b.p - a.p; });
+    lines.push("");
+    lines.push("【本期实测】第 " + last.issue + " 期 6 平码：" + last.normals.map(pad2).join(" ") + "　实际特码 " + pad2(last.special));
+    var hit12 = order.slice(0, 12).map(function(o){ return o.n; });
+    lines.push("AI 给的 12 个号：" + hit12.map(pad2).join(" ") + "　→ " + (hit12.indexOf(last.special) >= 0 ? "✅ 中" : "❌ 没中"));
+    lines.push("");
+    lines.push("【下一期】用上一期 6 平码推下一期特码（纯外推，准确率按上面的验证数看）：");
+    for (var t = 0; t < 12; t++){
+      lines.push(" " + (t + 1) + ". " + pad2(order[t].n) + "　概率 " + (order[t].p * 100).toFixed(2) + "%");
+    }
+  }
   box.innerHTML = "<pre style='margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.9;white-space:pre-wrap;user-select:text;'>" + lines.join("\n") + "</pre>";
+}
+function b7StartTrain(){
+  if (!draws.length){ alert("先载入历史数据"); return; }
+  if (B7.running) return;
+  if (!B7.m) b7Load();
+  b7Init(false);
+  B7.running = true; B7.val = null; B7.t0 = Date.now();
+  var target = B7.epoch + B7.epochs;
+  B7.roundTarget = target;
+  var tick = function(){
+    if (!B7.running) return;
+    var t0 = Date.now();
+    while (B7.running && B7.epoch < target && Date.now() - t0 < 200) b7Epoch();
+    b7Render();
+    if (B7.epoch < target){ B7.timer = setTimeout(tick, 0); }
+    else {
+      B7.running = false;
+      B7.val = b7Validate();
+      B7.dataLen = draws.length;
+      if (B7.val){
+        B7.track.push({ at: new Date().toISOString().slice(0, 16).replace("T", " "), n: draws.length,
+                        issue: draws[draws.length - 1].issue, top1: +B7.val.top1.toFixed(2),
+                        top12: +B7.val.top12.toFixed(2), top18: +B7.val.top18.toFixed(2) });
+        B7.track = B7.track.slice(-10);
+      }
+      b7Save();
+      b7Render();
+      B7.trained = B7.epoch;
+    }
+  };
+  b7Render();
+  tick();
+}
+function b7StopTrain(){ B7.running = false; if (B7.timer){ clearTimeout(B7.timer); B7.timer = null; } b7Validate(); b7Render("已停止训练。"); }
+function b7ResetModel(){ if (!confirm("把已经学到的权重清掉，重新学？（历史数据不受影响）")) return; b7Init(true); B7.epoch = 0; B7.val = null; B7.track = []; try { localStorage.removeItem(mkey("b7_model")); } catch(e) {} b7Render("模型已归零，点「开始/继续学习」或等它自动学。"); }
+
+// ===== 记忆 + 自动跟踪：模型按市场分开存，数据一变就自己续学 =====
+function b7Save(){
+  if (!B7.m) return;
+  try {
+    localStorage.setItem(mkey("b7_model"), JSON.stringify({
+      W1: Array.from(B7.m.W1), b1: Array.from(B7.m.b1),
+      W2: Array.from(B7.m.W2), b2: Array.from(B7.m.b2),
+      epoch: B7.epoch, dataLen: draws.length, track: B7.track.slice(-10),
+      at: new Date().toISOString().slice(0, 16).replace("T", " "),
+      lastIssue: draws.length ? draws[draws.length - 1].issue : ""
+    }));
+  } catch(e) {}
+}
+function b7Load(){
+  try {
+    var s = localStorage.getItem(mkey("b7_model"));
+    if (!s) return false;
+    var o = JSON.parse(s);
+    if (!o || !o.W1 || o.W1.length !== B7.D * B7.H) return false;
+    B7.m = { W1: new Float64Array(o.W1), b1: new Float64Array(o.b1),
+             W2: new Float64Array(o.W2), b2: new Float64Array(o.b2), n: 0 };
+    B7.epoch = o.epoch || 0;
+    B7.dataLen = o.dataLen || 0;
+    B7.track = o.track || [];
+    B7.savedAt = o.at || "";
+    return true;
+  } catch(e) { return false; }
+}
+// 数据一变（导入/新增一期/换市场）→ 自己在后台续学几轮，然后把最新命中率记一笔
+function b7AutoCheck(){
+  if (!B7.autoOn || B7.busy || B7.running) return;
+  if (typeof draws === "undefined" || !draws.length) return;
+  if (B7.m && draws.length === B7.dataLen && B7.val) return;
+  B7.busy = true;
+  try {
+    if (!B7.m && !b7Load()) b7Init(true);
+    var needFull = !B7.val;
+    var rounds = needFull ? B7.epochs : 3;
+    var list = needFull ? b7Split().train : b7Window();
+    var chunk = function(){
+      var t0 = Date.now();
+      while (B7.epoch < (needFull ? B7.epochs : B7.roundTarget) && Date.now() - t0 < 150){
+        b7Epoch(list);
+      }
+      if (B7.epoch < (needFull ? B7.epochs : B7.roundTarget)){ B7.timer = setTimeout(chunk, 0); return; }
+      B7.val = b7Validate();
+      B7.dataLen = draws.length;
+      var top12 = B7.val ? B7.val.top12.toFixed(2) : "?";
+      var top18 = B7.val ? B7.val.top18.toFixed(2) : "?";
+      B7.track.push({ at: new Date().toISOString().slice(0, 16).replace("T", " "), n: draws.length,
+                      issue: draws[draws.length - 1].issue, top1: B7.val ? +B7.val.top1.toFixed(2) : null,
+                      top12: +top12, top18: +top18 });
+      B7.track = B7.track.slice(-10);
+      b7Save();
+      B7.busy = false;
+      var pane = document.getElementById("b7-out");
+      if (pane && pane.offsetParent !== null) b7Render();
+    };
+    B7.roundTarget = B7.epoch + rounds;
+    if (!needFull) B7.roundTarget = B7.epoch + 3;
+    chunk();
+  } catch(e) { B7.busy = false; }
 }
 function break7Stats(){
   var box = document.getElementById("b7-out");
