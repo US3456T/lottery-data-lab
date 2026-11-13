@@ -1917,8 +1917,8 @@ function arenaTrial(seed, span){
       gapA[k] = (seen[k] < 0) ? 400 : (i - seen[k]);
       compA[k] = heat[k] * 10 + Math.min(gapA[k], 120);
     }
-    preds["热号(近50)"] = arenaPick(heat, 18, true);
-    preds["遗漏回补"] = arenaPick(gapA, 18, true);
+    preds["热号(近50)"] = arenaPick(heat, 24, true);
+    preds["遗漏回补"] = arenaPick(gapA, 24, true);
 
     // 马尔可夫 1 阶 / 2 阶
     var m1 = new Int32Array(50), m2 = new Int32Array(50);
@@ -1927,19 +1927,19 @@ function arenaTrial(seed, span){
       if (SP[t1-1] === p1) m1[SP[t1]] += 1;
       if (t1 >= 2 && SP[t1-2] === p2 && SP[t1-1] === p1) m2[SP[t1]] += 1;
     }
-    preds["马尔可夫1阶"] = arenaPick(m1, 18, true);
-    preds["马尔可夫2阶"] = arenaPick(m2, 18, true);
+    preds["马尔可夫1阶"] = arenaPick(m1, 24, true);
+    preds["马尔可夫2阶"] = arenaPick(m2, 24, true);
 
     // 神经网络
     nnEncode(X, SP, i); nnForward(nn, X, H, P);
     for (var k2 = 1; k2 <= 49; k2++) tmp[k2] = Math.round(P[k2-1] * 1e6);
-    preds["🧠 神经网络(MLP)"] = arenaPick(tmp, 18, true);
+    preds["🧠 神经网络(MLP)"] = arenaPick(tmp, 24, true);
 
     // 循环网络
     var pr = new Float64Array(49);
     rnnStep(i > 0 ? SP[i-1] : 0, pr);
     for (var k3 = 1; k3 <= 49; k3++) tmp[k3] = Math.round(pr[k3-1] * 1e6);
-    preds["🔁 循环网络(RNN)"] = arenaPick(tmp, 18, true);
+    preds["🔁 循环网络(RNN)"] = arenaPick(tmp, 24, true);
 
     // KNN：最近 6 期作为指纹，找最像的 12 段，看它们下一期开什么
     var kn = new Int32Array(50);
@@ -1956,17 +1956,17 @@ function arenaTrial(seed, span){
       best.sort(function(x, y){ return x[0] - y[0]; });
       for (var t3 = 0; t3 < 12 && t3 < best.length; t3++) kn[SP[best[t3][1]]] += 1000 - best[t3][0] * 5;
     }
-    preds["🧭 KNN相似期"] = arenaPick(kn, 18, true);
+    preds["🧭 KNN相似期"] = arenaPick(kn, 24, true);
 
     // Q 学习
     qSlot = (i > 0) ? ((SP[i-1] - 1) >> 2) % 12 : 0;
     for (var k4 = 1; k4 <= 49; k4++) tmp[k4] = Math.round(Q[qSlot * 49 + (k4 - 1)] * 1000) + heat[k4];
-    var qPool = arenaPick(tmp, 18, true);
+    var qPool = arenaPick(tmp, 24, true);
     preds["🎯 Q学习强化"] = qPool;
 
     // 贝叶斯在线
     for (var k5 = 1; k5 <= 49; k5++) tmp[k5] = Math.round(al[k5-1] / (al[k5-1] + be[k5-1]) * 1e6);
-    preds["📊 贝叶斯在线"] = arenaPick(tmp, 18, true);
+    preds["📊 贝叶斯在线"] = arenaPick(tmp, 24, true);
 
     // 遗传算法（取种群平均分）
     var gaSc = new Int32Array(50);
@@ -1975,7 +1975,7 @@ function arenaTrial(seed, span){
       for (var gp = 0; gp < GA_P; gp++) s6 += gw[gp][k6-1] * (heat[k6] + 0.3) + 0.01 * Math.min(gapA[k6], 200);
       gaSc[k6] = Math.round(s6 * 100);
     }
-    var gaPool = arenaPick(gaSc, 18, true);
+    var gaPool = arenaPick(gaSc, 24, true);
     preds["🧬 遗传算法"] = gaPool;
 
     // 集成：按各引擎历史命中率加权合并
@@ -1984,13 +1984,17 @@ function arenaTrial(seed, span){
       var o = preds[k] || [];
       for (var u = 0; u < o.length; u++) ens[o[u]] += Math.round(pw[k] * 1000 * (18 - u) / 18);
     });
-    preds["⚖️ 集成堆叠"] = arenaPick(ens, 18, true);
+    preds["⚖️ 集成堆叠"] = arenaPick(ens, 24, true);
 
     // 随机基线
     var pool = [];
     for (var q5 = 1; q5 <= 49; q5++) pool.push(q5);
     for (var q6 = pool.length - 1; q6 > 0; q6--){ var rj = Math.floor(rng() * (q6 + 1)); var tp = pool[q6]; pool[q6] = pool[rj]; pool[rj] = tp; }
-    preds["随机基线"] = pool.slice(0, 18);
+    preds["随机基线"] = pool.slice(0, 24);
+
+    // 记下每轮各引擎的排名顺序，跑完后用来出“下一期”清单
+    ARENA.lastPreds = {};
+    for (var nmP in preds) ARENA.lastPreds[nmP] = preds[nmP].slice();
 
     // 记分
     for (var nm in preds){
@@ -2060,6 +2064,9 @@ function arenaStore(extra){
     var o = { span: ARENA.span, rounds: ARENA.rounds, round: ARENA.round, total: ARENA.total,
               seed: ARENA.seed, agg: ARENA.agg, dataLen: (typeof draws !== "undefined" ? draws.length : 0),
               at: new Date().toLocaleString(), finished: !ARENA.running && ARENA.round >= ARENA.rounds };
+    var chs = arenaChampion(), lps = ARENA.lastPreds;
+    if (chs && lps && lps[chs.model]) o.nextModel = chs.model;
+    if (chs && lps && lps[chs.model]) o.nextList = lps[chs.model].slice(0, 24);
     localStorage.setItem(mkey("arena"), JSON.stringify(o));
   } catch(e) {}
 }
@@ -2093,6 +2100,7 @@ function arenaRestore(){
   ARENA.seed = rec.seed || 1;
   ARENA.agg = rec.agg || null;
   ARENA.restored = true;
+  if (rec.nextModel && rec.nextList){ ARENA.lastPreds = {}; ARENA.lastPreds[rec.nextModel] = rec.nextList.slice(); }
   ARENA.restoredAt = rec.at;
   ARENA.restoredFinished = !!rec.finished;
   if (btn && !rec.finished && rec.round < rec.rounds && rec.dataLen === (typeof draws !== "undefined" ? draws.length : -1)){
@@ -2230,9 +2238,47 @@ function arenaRender(){
   html += "<div style='margin-top:8px;font-size:12px;color:#555;line-height:1.7;'>理论随机值：单号 2.04% ／ 前6码 12.24% ／ 前18码 36.73%。<br>样本量 " + snap.totalPreds.toLocaleString() + " 次预测（" + snap.round + " 轮 × " + snap.span + " 期）。<br><b>看结论的方法</b>：只有明显高于 36.73% 才算真本事；上下摆动 1~2 个百分点是随机波动，不算。</div>";
   var ht = arenaHistText();
   if (ht) html += "<div style='margin-top:10px;padding:8px;border:1px solid #ddd;border-radius:6px;background:#fafafa;font-size:12px;line-height:1.8;white-space:pre-wrap;'>" + ht + "</div>";
+  var nb = arenaNextBlock();
+  if (nb) html += "<div style='margin-top:10px;padding:8px;border:1px solid #16a34a;border-radius:6px;background:#f0fdf4;font-size:12px;line-height:1.9;white-space:pre-wrap;'>" + nb + "</div>";
   out.innerHTML = html;
 }
 
+function arenaNextBlock(){
+  var ch = arenaChampion();
+  var preds = ARENA.lastPreds;
+  if (!ch || !preds || !preds[ch.model] || !draws.length) return "";
+  var base = preds[ch.model].slice();      // 冠军引擎自己跑出来的 24 码排名
+  var list24 = base.slice(0, 24);
+  var nIdx = draws.length; // 下一期的生肖表
+  var lastIssue = draws[draws.length - 1].issue;
+  var att = function(n){
+    var a = numAttrs(n, nIdx);
+    return pad2(n) + " " + (a.zod || "-") + " " + a.color + " 尾" + a.tail + " " + Math.floor(n / 10) + "头 合" + a.sum + " " + a.odd + a.big;
+  };
+  var zs = [], zm = {};
+  for (var t = 0; t < list24.length && zs.length < 10; t++){
+    var z = zodiacOf(list24[t], nIdx);
+    if (!zm[z]){ zm[z] = []; zs.push(z); }
+    if (zm[z].indexOf(pad2(list24[t])) < 0) zm[z].push(pad2(list24[t]));
+  }
+  var asc = function(arr){ return arr.slice().sort(function(a, b){ return a - b; }).map(pad2).join(" "); };
+  var out = [];
+  out.push("【下一期 · 第 " + nextIssueNo(lastIssue) + " 期 · 冠军引擎「" + ch.model + "」口径】");
+  out.push("首选特码（第 7 个）：" + att(base[0]));
+  out.push("");
+  out.push("10 肖：" + zs.join(" "));
+  out.push("6 肖：" + zs.slice(0, 6).join(" "));
+  out.push("生肖号码来源：" + zs.map(function(z2){ return z2 + "(" + zm[z2].join(" ") + ")"; }).join("  "));
+  out.push("24 码（从小到大）：" + asc(list24.slice(0, 24)));
+  out.push("18 码（从小到大）：" + asc(base.slice(0, 18)));
+  out.push("12 码（从小到大）：" + asc(base.slice(0, 12)));
+  var pk = base.slice(1, 7);
+  out.push("");
+  out.push("6 个平码（前 6 个，避开首选特码）：" + asc(pk));
+  out.push("  明细：" + pk.map(att).join("　｜　"));
+  out.push("（全部是冠军引擎自己跑出来的排名，没有外加任何手工规则；下一期是重新抽号，命中率看上面表格。）");
+  return out.join("\n");
+}
 function arenaStop(){ ARENA.running = false; arenaSaveChampion(arenaSnapshot()); arenaArchive(arenaSnapshot()); arenaStore(); arenaRender(); }
 
 // ===== 比赛档案：每次跑完（或点停止）都存进本地库，关掉浏览器也在 =====
