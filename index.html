@@ -73,6 +73,8 @@ button.primary:hover { background: var(--accent); }
 </header>
 <!-- 顶部自动条已移除：推荐内容全部搬到「📋 推荐分组」页面 -->
 <div id="auto-bar" style="display:none;"></div>
+<!-- 顺序/网上核对状态条：不跳期 + 每次打开与网上数据比对 -->
+<div id="seq-bar" style="margin:0 16px 8px;padding:8px 10px;border-radius:6px;background:#0f172a;border:1px solid var(--border);font-size:12px;line-height:1.7;color:var(--text-dim);display:none;"></div>
 
 <main>
   <aside>
@@ -119,6 +121,7 @@ button.primary:hover { background: var(--accent); }
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
         <button class="primary" onclick="loadRemoteData('hk.txt','香港记录')">载入香港记录（3682期）</button>
         <button class="primary" onclick="loadRemoteData('mo.txt','澳门记录')">载入澳门记录（2367期）</button>
+        <button onclick="remoteCompare()">🌐 现在核对网上数据</button>
         <span class="hint" style="font-size:11px;color:var(--text-dim);">回测1500期：香港 24码50.1% / 12码24.1% / 10肖83.6%；澳门 49.5% / 25.8% / 84.7%；随机基线 49.0% / 24.5% / 83.3%</span>
       </div>
       <!-- 最新一期（记忆） -->
@@ -218,6 +221,7 @@ button.primary:hover { background: var(--accent); }
         <span class="hint">场上 12 个引擎：🧠 神经网络(MLP)　🔁 循环网络(RNN)　🧭 KNN相似期　🎯 Q学习强化　📊 贝叶斯在线　🧬 遗传算法　⚖️ 集成堆叠｜对照：马尔可夫1/2阶、热号、遗漏回补、随机基线。带图标的六个都是每期自己调权重、会持续学习的模型，预测完立刻用真结果训练一次。</span>
       </div>
       <div id="arena-progress" style="font-size:12px;color:var(--accent);padding:4px 0;"></div>
+      <div id="arena-seq" style="font-size:12px;color:var(--text-dim);padding:2px 0;line-height:1.7;"></div>
       <div class="row" style="gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;">
         <button onclick="backupAllData()">🗄 导出（竞技+特码 一起）</button>
         <button onclick="document.getElementById('all-input').click()">📥 导入（竞技+特码 一起）</button>
@@ -774,10 +778,13 @@ function setData(d){
   renderLatest();
   renderYearIndex();
   try { mkUi(); } catch(e) {}
+  try { if (typeof refreshSeqBar === "function") refreshSeqBar(); } catch(e) {}
   // 数据一进来就自动结算 + 自动出推荐（不用点任何按钮）
   try { setTimeout(function(){ try { if (typeof ledgerRun === "function" && !LEDGER.busy) ledgerRun(false); } catch(e) {} }, 350); } catch(e) {}
   // 特码 AI：数据变了就自己续学（按市场分开存，互不干扰）
   try { setTimeout(function(){ try { if (typeof b7AutoCheck === "function") b7AutoCheck(); } catch(e) {} }, 900); } catch(e) {}
+  // 每次数据变动，都与网上的记录核对一次（以本地为准）
+  try { setTimeout(function(){ try { if (typeof remoteCompare === "function") remoteCompare(); } catch(e) {} }, 1200); } catch(e) {}
 }
 
 // 汇总每年换肖段：{year, yz, issue}
@@ -1052,6 +1059,18 @@ function addOneDraw(){
   }
 
   const one = parsed[parsed.length-1];
+  // 顺序铁律：新增的必须是最新一期的下一期（或同名期号做修改），不许跳期
+  const existIdx0 = draws.findIndex(x => String(x.issue) === String(one.issue));
+  if (existIdx0 < 0 && draws.length){
+    const lastIssue = draws[draws.length-1].issue;
+    if (!issueFollows(lastIssue, one.issue)){
+      alert("⚠ 这不合顺序：本地最新是 " + lastIssue + " 期，你输入的是 " + one.issue + " 期。\n"
+          + "中间缺了期，跳期会让后面的分析和记录全错，所以不保存。\n"
+          + "请按顺序先补上 " + (+String(lastIssue).replace(/[^\d]/g,"") + 1) + " 期。\n"
+          + "（如果是农历跨年后回到 001 期，那是允许的。）");
+      return;
+    }
+  }
   // 沿用上一条记录里的年份生肖，新增一期也能正确显示平码生肖
   if(!one.yearZodiac && draws.length) one.yearZodiac = draws[draws.length-1].yearZodiac || "";
   // 同期号则替换，否则追加
@@ -2004,7 +2023,11 @@ function arenaTrial(seed, span){
   var seen = new Int32Array(50).fill(-1), j0;
   for (j0 = Math.max(0, start - 400); j0 < start; j0++) seen[SP[j0]] = j0;
 
+  var cntPred = 0;
   for (var i = start; i < end; i++){
+    // 顺序铁律：这一期必须紧跟上一期，跳了期的位置直接跳过，不把跳期当成"上一期"
+    if (!seqAt(i)) { ARENA.gapSkip = (ARENA.gapSkip || 0) + 1; continue; }
+    cntPred++;
     var truth = SP[i], preds = {};
 
     // 热号 / 遗漏（保留两个便宜的统计对照）
@@ -2152,7 +2175,7 @@ function arenaTrial(seed, span){
 
     seen[truth] = i;
   }
-  return { hit: hit, span: end - start };
+  return { hit: hit, span: cntPred };
 }
 
 // ===== 竞技记忆：设置、进度、上次结果都存起来，重开还在 =====
@@ -2296,6 +2319,12 @@ function arenaSnapshot(){
 function arenaRender(){
   var p = document.getElementById("arena-progress");
   if (p) p.textContent = "进度 " + ARENA.round + " / " + ARENA.rounds + " 轮　已做 " + ARENA.total.toLocaleString() + " 次预测" + (ARENA.running ? "（跑着呢，可以切去别的页签）" : "");
+  var sq = document.getElementById("arena-seq");
+  if (sq && draws.length){
+    var r0 = seqReport();
+    sq.innerHTML = "<div style='color:" + (r0.gaps.length ? "#f59e0b" : "#16a34a") + "'>" + (r0.gaps.length ? "⚠ " : "✔ ") + seqText() + "</div>"
+                 + "<div>竞技口径：每轮按顺序逐期推，跳期位置直接跳过不计分" + (ARENA.gapSkip ? "（本次已跳过 " + ARENA.gapSkip + " 处）" : "") + "</div>";
+  }
   var out = document.getElementById("arena-out");
   if (!out) return;
   if (!ARENA.total && !ARENA.running){
@@ -2780,12 +2809,18 @@ function b7Epoch(list){
   B7.samples = (B7.samples || 0) + src.length;
 }
 function b7Split(){
-  var all = draws.filter(function(d){ return d.normals && d.normals.length >= 6 && d.special >= 1 && d.special <= 49; });
+  var all = [], skipped = 0;
+  for (var i = 0; i < draws.length; i++){
+    var d = draws[i];
+    if (!(d.normals && d.normals.length >= 6 && d.special >= 1 && d.special <= 49)) continue;
+    if (!seqAt(i)){ skipped++; continue; }   // 跳期后的那一期不参与：前一期的位置是空的
+    all.push(d);
+  }
   var hold = Math.min(B7.hold || 200, Math.floor(all.length * 0.2));
   var span = B7.span || 0;
   var pool = span > 0 ? all.slice(Math.max(0, all.length - span)) : all;
   var cut = Math.max(1, pool.length - Math.min(hold, Math.floor(pool.length * 0.2)));
-  return { train: pool.slice(0, cut), test: pool.slice(cut), all: all, pool: pool };
+  return { train: pool.slice(0, cut), test: pool.slice(cut), all: all, pool: pool, skipped: skipped };
 }
 // 学习参考 = 全部历史开奖记录（只把最新 200 期留出来验真假），不做窗口截断
 function b7Window(){
@@ -2796,17 +2831,24 @@ function b7Validate(){
   if (!test.length) return null;
   var k = [1, 6, 10, 12, 18, 24];
   var hit = { 1: 0, 6: 0, 10: 0, 12: 0, 18: 0, 24: 0 };
+  var miss12 = 0, max12 = 0, miss18 = 0, max18 = 0;
   for (var i = 0; i < test.length; i++){
     var p = b7Step(test[i].normals, test[i].special, false);
     var order = [];
     for (var n = 0; n < 49; n++) order.push({ n: n + 1, p: p[n] });
     order.sort(function(a, b){ return b.p - a.p; });
+    var top12 = [], top18 = [];
     for (var q = 0; q < k.length; q++){
       var topN = order.slice(0, k[q]).map(function(o){ return o.n; });
+      if (k[q] === 12) top12 = topN;
+      if (k[q] === 18) top18 = topN;
       if (topN.indexOf(test[i].special) >= 0) hit[k[q]]++;
     }
+    // 连错统计：连续多少期没落在给的范围里
+    if (top12.indexOf(test[i].special) >= 0){ miss12 = 0; } else { miss12++; if (miss12 > max12) max12 = miss12; }
+    if (top18.indexOf(test[i].special) >= 0){ miss18 = 0; } else { miss18++; if (miss18 > max18) max18 = miss18; }
   }
-  var res = { n: test.length, train: split.train.length };
+  var res = { n: test.length, train: split.train.length, we12: max12, we18: max18, skipped: split.skipped || 0 };
   k.forEach(function(x){ res["top" + x] = hit[x] / test.length * 100; });
   return res;
 }
@@ -2814,6 +2856,75 @@ function nextIssueNo(s){
   var m = String(s || "").match(/\d+/);
   if (!m) return "下一";
   return (+m[0] + 1);
+}
+// ===== 顺序铁律：不许跳期，所有分析按顺序一期一期走 =====
+function issueNum(s){ var m = String(s || "").match(/\d+/); return m ? +m[0] : NaN; }
+function issueFollows(prev, cur){
+  var a = issueNum(prev), b = issueNum(cur);
+  if (!isFinite(a) || !isFinite(b)) return false;
+  if (b === a + 1) return true;
+  if (b === 1 && a > 1) return true;      // 农历跨年回到 001 期，属于正常
+  return false;
+}
+function seqAt(i){ if (i <= 0) return true; return issueFollows(draws[i-1].issue, draws[i].issue); }
+function seqReport(){
+  var gaps = [];
+  for (var i = 1; i < draws.length; i++){
+    if (!seqAt(i)) gaps.push({ i: i, prev: draws[i-1].issue, cur: draws[i].issue });
+  }
+  return { total: draws.length, gaps: gaps };
+}
+function seqText(){
+  var r = seqReport();
+  if (!draws.length) return "顺序核验：还没有数据";
+  if (!r.gaps.length) return "顺序核验：共 " + r.total + " 期，期号连续、没有跳期，分析按顺序一期不跳";
+  var g = r.gaps.slice(0, 4).map(function(x){ return x.prev + "期 → " + x.cur + "期"; }).join("、");
+  return "顺序核验：共 " + r.total + " 期，有 " + r.gaps.length + " 处跳期（" + g + (r.gaps.length > 4 ? " 等" : "")
+       + "）；学习和竞技都按顺序走，跳过这些断点，不拿跳期当上一期";
+}
+// ===== 顺序/网上核对状态条 =====
+var REMOTE_INFO = null;
+function localDrawsOf(m){
+  try { return JSON.parse(localStorage.getItem("lottery_data__" + m) || "[]"); } catch(e){ return []; }
+}
+function refreshSeqBar(){
+  var bar = document.getElementById("seq-bar");
+  if (!bar) return;
+  if (!draws.length){ bar.style.display = "none"; return; }
+  var r = seqReport();
+  bar.style.display = "block";
+  bar.innerHTML = "<div style='color:" + (r.gaps.length ? "#f59e0b" : "#16a34a") + "'>" + (r.gaps.length ? "⚠ " : "✔ ") + seqText() + "</div>"
+                + "<div id='remote-line'>🌐 网上核对：" + (REMOTE_INFO || "还没核对（等自动核对，或点「🌐 现在核对网上数据」）") + "　（本地数据为准）</div>";
+}
+function remoteCompare(){
+  if (!(window.fetch)) return;
+  var msgs = [];
+  var jobs = ["hk", "mo"].map(function(m){
+    var mn = (m === "mo" ? "澳门" : "香港");
+    return fetch(m + ".txt?cb=" + Date.now()).then(function(r){ return r.text(); }).then(function(t){
+      var rd = parseTxt(t), ld = localDrawsOf(m);
+      if (!rd.length){ msgs.push(mn + "：网上文件没解析到数据"); return; }
+      if (!ld.length){ msgs.push(mn + "：本地还没有，网上 " + rd.length + " 期（点「载入" + mn + "记录」）"); return; }
+      var rLast = String(rd[rd.length - 1].issue), lLast = String(ld[ld.length - 1].issue);
+      if (rd.length > ld.length || rLast !== lLast){
+        var newer = rd.filter(function(d){ return !ld.some(function(x){ return String(x.issue) === String(d.issue); }); });
+        msgs.push(mn + "：网上 " + rd.length + " 期（到 " + rLast + " 期），本地 " + ld.length + " 期（到 " + lLast + " 期），网上多 "
+                 + newer.length + " 期 → 以本地为准，不覆盖");
+      } else if (rd.length < ld.length){
+        msgs.push(mn + "：本地 " + ld.length + " 期比网上 " + rd.length + " 期新 → 以本地为准");
+      } else {
+        msgs.push(mn + "：一致（" + ld.length + " 期，到 " + lLast + " 期）✔");
+      }
+    }).catch(function(e){
+      msgs.push(mn + "：网上取不到（" + ((e && e.message) ? e.message : "网络问题") + "），本地的照常用");
+    });
+  });
+  Promise.all(jobs).then(function(){
+    REMOTE_INFO = msgs.join("　｜　");
+    var line = document.getElementById("remote-line");
+    if (line) line.textContent = "🌐 网上核对：" + REMOTE_INFO + "　（本地数据为准）";
+    else refreshSeqBar();
+  });
 }
 function b7Render(head){  var box = document.getElementById("b7-out");
   if (!box) return;
@@ -2829,7 +2940,9 @@ function b7Render(head){  var box = document.getElementById("b7-out");
   lines.push("设置（市场：" + marketName() + "）：每轮学习 " + (B7.span ? B7.span + " 期（最近）" : "全部历史")
             + "　跑 " + B7.epochs + " 轮　留出 " + B7.hold + " 期验证");
   lines.push("样本：" + (split.train.length + split.test.length) + " 期　训练用 " + split.train.length
-            + " 期　留出最新 " + split.test.length + " 期从不参与训练，只用来看真假");
+            + " 期　留出最新 " + split.test.length + " 期从不参与训练，只用来看真假"
+            + (split.skipped ? "　（跳期后的 " + split.skipped + " 期不用）" : ""));
+  lines.push(seqText());
   lines.push("记忆：" + (B7.savedAt ? "已于 " + B7.savedAt + " 存过权重（市场：" + marketName() + "，存盘时 " + B7.dataLen + " 期）" : "还没存过权重（第一次学完会自动存）")
             + "　自动跟踪：" + (B7.autoOn ? "开" : "关"));
   if (B7.track.length){
@@ -2854,6 +2967,10 @@ function b7Render(head){  var box = document.getElementById("b7-out");
     lines.push("给 12 个号（Top12）：" + B7.val.top12.toFixed(2) + "%　随机 24.49%");
     lines.push("给 18 个号（Top18）：" + B7.val.top18.toFixed(2) + "%　随机 36.73%");
     lines.push("给 24 个号（Top24）：" + (B7.val.top24 !== undefined ? B7.val.top24.toFixed(2) : "-") + "%　随机 48.98%");
+    if (B7.val.we12 !== undefined){
+      lines.push("连错情况：12 码最长连续 " + B7.val.we12 + " 期没中　18 码最长连续 " + B7.val.we18 + " 期没中");
+      lines.push("（这是「留出验证」实测出来的真实最长连错，不修饰；'连中多少期'没法保证，谁保证谁就是骗人）");
+    }
   }
   if (draws.length){
     var last0 = draws[draws.length - 1], idx0 = draws.length - 1;
@@ -3219,6 +3336,8 @@ document.addEventListener("DOMContentLoaded", function(){
   ledgerLoad(); ledgerRender(); srcRender();
   setTimeout(ledgerAutoCheck, 3000);
   setInterval(ledgerAutoCheck, 5000);
+  setTimeout(function(){ try { refreshSeqBar(); } catch(e) {} }, 200);
+  setTimeout(function(){ try { remoteCompare(); } catch(e) {} }, 2500);
 });
 </script>
 </body>
