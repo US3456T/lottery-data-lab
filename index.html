@@ -2732,7 +2732,7 @@ function b7Render(head){  var box = document.getElementById("b7-out");
     if (ord0[1]) lines.push("备选特码：" + pad2(ord0[1].n) + "　" + att(ord0[1].n) + "　概率 " + (ord0[1].p * 100).toFixed(2) + "%");
     if (ord0[2]) lines.push("第三候选：" + pad2(ord0[2].n) + "　" + att(ord0[2].n) + "　概率 " + (ord0[2].p * 100).toFixed(2) + "%");
     lines.push("");
-    lines.push("【下一期 · 12 码明细（按模型概率从高到低，每行一个号）】");
+    lines.push("【下一期 · 特码候选 12 码（这不是平码，是特码的备选范围）】");
     for (var t = 0; t < 12 && ord0[t]; t++){
       lines.push(" " + (t + 1) + ". " + pad2(ord0[t].n) + "　" + att(ord0[t].n) + "　概率 " + (ord0[t].p * 100).toFixed(2) + "%");
     }
@@ -2742,6 +2742,14 @@ function b7Render(head){  var box = document.getElementById("b7-out");
       if (!zm10[z0]){ zm10[z0] = []; zs10.push(z0); }
       if (zm10[z0].indexOf(pad2(ord0[t0].n)) < 0) zm10[z0].push(pad2(ord0[t0].n));
     }
+    lines.push("");
+    lines.push("【下一期 · 平码（前 6 个）】按模型概率最高的 6 个号（已避开首选特码 " + pad2(ord0[0].n) + "），一行一个号：");
+    var pk = 0;
+    for (var tp = 1; tp < ord0.length && pk < 6; tp++){
+      pk++;
+      lines.push(" 平码" + pk + "：" + pad2(ord0[tp].n) + "　" + att(ord0[tp].n) + "　概率 " + (ord0[tp].p * 100).toFixed(2) + "%");
+    }
+    lines.push("6 个平码一行速览（从小到大）： " + ord0.slice(1, 7).map(function(o){ return o.n; }).sort(function(a,b){ return a-b; }).map(pad2).join(" "));
     lines.push("");
     lines.push("【下一期 · 生肖（按模型概率排序 · 市场：" + marketName() + "）】");
     lines.push("10 肖： " + zs10.join(" "));
