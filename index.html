@@ -2667,8 +2667,12 @@ function b7Validate(){
   k.forEach(function(x){ res["top" + x] = hit[x] / test.length * 100; });
   return res;
 }
-function b7Render(head){
-  var box = document.getElementById("b7-out");
+function nextIssueNo(s){
+  var m = String(s || "").match(/\d+/);
+  if (!m) return "下一";
+  return (+m[0] + 1);
+}
+function b7Render(head){  var box = document.getElementById("b7-out");
   if (!box) return;
   var lines = [];
   if (head) lines.push(head), lines.push("");
@@ -2710,18 +2714,36 @@ function b7Render(head){
   }
   if (draws.length){
     var last0 = draws[draws.length - 1], idx0 = draws.length - 1;
+    var nIdx = idx0 + 1; // 下一期按下一期的生肖表算（跨农历年才算得对）
     var p0 = b7Step(last0.normals, last0.special, false);
     var ord0 = [];
     for (var q0 = 0; q0 < 49; q0++) ord0.push({ n: q0 + 1, p: p0[q0] });
     ord0.sort(function(a, b){ return b.p - a.p; });
+    var nxtIssue = nextIssueNo(last0.issue);
+    var att = function(n){
+      var a = numAttrs(n, nIdx);
+      return "生肖 " + (a.zod || "-") + "　" + a.color + "　尾" + a.tail + "　" + Math.floor(n / 10) + "头　合" + a.sum
+           + "　" + a.odd + a.big;
+    };
+    // ===== 下一期排最前面 =====
+    lines.push("");
+    lines.push("【下一期 · 第 " + nxtIssue + " 期 · 特码（第 7 个）】");
+    lines.push("首选特码：" + pad2(ord0[0].n) + "　" + att(ord0[0].n) + "　概率 " + (ord0[0].p * 100).toFixed(2) + "%");
+    if (ord0[1]) lines.push("备选特码：" + pad2(ord0[1].n) + "　" + att(ord0[1].n) + "　概率 " + (ord0[1].p * 100).toFixed(2) + "%");
+    if (ord0[2]) lines.push("第三候选：" + pad2(ord0[2].n) + "　" + att(ord0[2].n) + "　概率 " + (ord0[2].p * 100).toFixed(2) + "%");
+    lines.push("");
+    lines.push("【下一期 · 12 码明细（按模型概率从高到低，每行一个号）】");
+    for (var t = 0; t < 12 && ord0[t]; t++){
+      lines.push(" " + (t + 1) + ". " + pad2(ord0[t].n) + "　" + att(ord0[t].n) + "　概率 " + (ord0[t].p * 100).toFixed(2) + "%");
+    }
     var zs10 = [], zm10 = {};
     for (var t0 = 0; t0 < ord0.length && zs10.length < 10; t0++){
-      var z0 = zodiacOf(ord0[t0].n, idx0);
+      var z0 = zodiacOf(ord0[t0].n, nIdx);
       if (!zm10[z0]){ zm10[z0] = []; zs10.push(z0); }
       if (zm10[z0].indexOf(pad2(ord0[t0].n)) < 0) zm10[z0].push(pad2(ord0[t0].n));
     }
     lines.push("");
-    lines.push("【AI 输出清单 · 按模型概率排序 · 市场：" + marketName() + "】");
+    lines.push("【下一期 · 生肖（按模型概率排序 · 市场：" + marketName() + "）】");
     lines.push("10 肖： " + zs10.join(" "));
     lines.push("6 肖： " + zs10.slice(0, 6).join(" "));
     lines.push("生肖号码来源： " + zs10.map(function(z){ return z + "(" + zm10[z].join(" ") + ")"; }).join("  "));
@@ -2730,20 +2752,7 @@ function b7Render(head){
       var asc = ns.slice().sort(function(a, b){ return a - b; });
       lines.push(k + " 码一行速览（从小到大）： " + asc.map(pad2).join(" "));
     });
-    var hitSet = {};
-    [24, 18, 12].forEach(function(k){
-      var ns = ord0.slice(0, k).map(function(o){ return o.n; });
-      hitSet[k] = ns.indexOf(last0.special) >= 0;
-    });
-    lines.push("核对上一期（第 " + last0.issue + " 期，实际特码 " + pad2(last0.special) + "）："
-              + "24 码 " + (hitSet[24] ? "✅中" : "❌没中") + "　18 码 " + (hitSet[18] ? "✅中" : "❌没中")
-              + "　12 码 " + (hitSet[12] ? "✅中" : "❌没中"));
-    lines.push("这三档命中率以【留出验证】那几行为准，那才是没作弊的真实数字。");
-    lines.push("");
-    lines.push("【下一期】用上一期 6 平码推下一期特码（纯外推，准确率按上面的验证数看）：");
-    for (var t = 0; t < 12; t++){
-      lines.push(" " + (t + 1) + ". " + pad2(ord0[t].n) + "　概率 " + (ord0[t].p * 100).toFixed(2) + "%");
-    }
+    lines.push("上一期（第 " + last0.issue + " 期）已经开过了，不再回头看；上面全是给下一期用的。");
   }
   box.innerHTML = "<pre style='margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.9;white-space:pre-wrap;user-select:text;'>" + lines.join("\n") + "</pre>";
 }
