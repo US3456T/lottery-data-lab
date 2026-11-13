@@ -670,19 +670,36 @@ window.MARKET = window.MARKET || "hk";
 function mkey(base){ return base + "__" + (window.MARKET === "mo" ? "mo" : "hk"); }
 function marketName(){ return window.MARKET === "mo" ? "澳门" : "香港"; }
 function setMarket(m){ window.MARKET = (m === "mo") ? "mo" : "hk"; try { localStorage.setItem("lottery_market", window.MARKET); } catch(e) {} }
-// 自动判断这份数据是香港还是澳门：先和已存的两家数据比对，没存过就按数据量估
+// 自动判断这份数据是香港还是澳门
+// 1) 先“对号入座”：拿最后一期的号码去两家已存记录里比，比上了就是那家（期数差得少也照样认得出）
+// 2) 比不上就按数据量估
+function drawFp(d){
+  return String((d && d.issue) || "") + "|" + ((d && d.normals) || []).join(",") + "|" + ((d && d.special) || "");
+}
 function detectMarket(d){
   var pair = [["hk", "lottery_data__hk"], ["mo", "lottery_data__mo"]];
-  var last = String((d[d.length - 1] || {}).issue || "");
+  var best = null, bestHit = 0, bestTotal = 0;
+  var K = Math.min(20, d.length);
+  var probe = d.slice(d.length - K);
   for (var i = 0; i < pair.length; i++){
     try {
-      var s = JSON.parse(localStorage.getItem(pair[i][1]) || "null");
-      if (s && s.length === d.length && String((s[s.length - 1] || {}).issue || "") === last) return pair[i][0];
+      var store = JSON.parse(localStorage.getItem(pair[i][1]) || "null");
+      if (!store || !store.length) continue;
+      var set = {};
+      store.forEach(function(x){ set[drawFp(x)] = 1; });
+      var hit = 0;
+      probe.forEach(function(x){ if (set[drawFp(x)]) hit++; });
+      if (hit > bestHit){ bestHit = hit; bestTotal = K; best = pair[i][0]; }
     } catch(e) {}
   }
-  if (d.length >= 3000) return "hk";          // 香港累积期数明显多（3600+）
-  if (d.length >= 2000) return "mo";          // 澳门在 2300 左右
-  return (window.MARKET || "hk");
+  // 末 20 期里有 8 期以上对得上，就认定是这家（两家数据不会重到这程度）
+  if (best && bestHit >= Math.min(8, bestTotal)) return best;
+  // 没有任何存档时的兜底：香港一年只开到 1~155 期，澳门期号能到 3xx
+  var maxIssue = 0;
+  d.forEach(function(x){ var n = parseInt(String(x.issue || "").replace(/^0+/, ""), 10); if (n > maxIssue) maxIssue = n; });
+  if (maxIssue >= 200) return "mo";
+  if (d.length >= 2000) return "mo";
+  return "hk";
 }
 function mkUi(){
   try {
