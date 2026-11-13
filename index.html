@@ -242,11 +242,9 @@ button.primary:hover { background: var(--accent); }
     <div class="tab-pane" id="pane-break7">
       <div class="row">
         <label>每轮学习期数：</label>
-        <input type="text" id="b7-span" value="0" style="width:90px" title="0 = 全部历史；填 3000 就每轮只用最近 3000 期">
+        <input type="text" id="b7-span" value="3000" style="width:90px" title="0 = 全部历史；填 3000 就每轮只用最近 3000 期">
         <label>跑多少轮：</label>
         <input type="text" id="b7-epochs" value="40" style="width:70px">
-        <label>留出验证：</label>
-        <input type="text" id="b7-hold" value="200" style="width:64px">
         <button class="primary" onclick="b7StartTrain()">开始学习</button>
         <button onclick="b7ContinueTrain()" id="b7-resume">接着上次学</button>
         <button onclick="b7StopTrain()">停止</button>
@@ -2645,7 +2643,7 @@ function b7Render(head){
             + (B7.running ? "（正在学…）" : (B7.epoch >= target && B7.epoch ? "（已练完）" : "（还没练）")));
   b7Progress("进度 " + B7.epoch + " / " + target + " 轮　已训练 " + (B7.samples || 0) + " 次样本　市场：" + marketName() + (B7.running ? "（跑着呢，可以切去别的页签）" : ""));
   var rbtn = document.getElementById("b7-resume");
-  if (rbtn) rbtn.textContent = "接着上次学" + (B7.m && B7.savedAt ? "（已学 " + B7.epoch + " 轮）" : "");
+  if (rbtn) rbtn.textContent = "接着上次学" + (B7.m && B7.savedAt ? "（" + B7.epoch + "/" + target + " 轮）" : "");
   var split = b7Split();
   lines.push("设置（市场：" + marketName() + "）：每轮学习 " + (B7.span ? B7.span + " 期（最近）" : "全部历史")
             + "　跑 " + B7.epochs + " 轮　留出 " + B7.hold + " 期验证");
