@@ -2298,9 +2298,11 @@ function ledgerUsefulHtml(){
   // 24 / 18 / 12 三档
   [24, 18, 12].forEach(function(k){
     html += "<div style='font-weight:800;margin-top:8px;color:#0f172a;'>下一期（第 " + pad3(parseInt(last.issue, 10) + 1) + " 期）" + k + " 码清单（" + k + " 个，互不重复）</div>";
-    html += "<pre style='margin:2px 0 8px;font-family:Consolas,monospace;font-size:13px;line-height:1.85;white-space:pre-wrap;user-select:text;'>";
+    html += "<pre style='margin:2px 0 6px;font-family:Consolas,monospace;font-size:13px;line-height:1.85;white-space:pre-wrap;user-select:text;'>";
     html += sc.slice(0, k).map(function(o){ return numText(o.n, idx); }).join("\n");
     html += "</pre>";
+    var asc = sc.slice(0, k).map(function(o){ return o.n; }).sort(function(a, b){ return a - b; });
+    html += "<pre style='margin:0 0 10px;font-family:Consolas,monospace;font-size:13px;line-height:1.85;white-space:pre-wrap;user-select:text;color:#0b5d1e;font-weight:700;'>" + "一行速览（从小到大）：" + asc.map(pad2).join(" ") + "</pre>";
   });
   // 头数 / 尾数分组
   var heads = [], tails = [];
