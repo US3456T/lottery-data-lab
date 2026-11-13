@@ -1525,8 +1525,12 @@ function autoFillOptimal(){
 }
 
 function askAll(){
-  const question = document.getElementById("question").value.trim();
+  const qEl = document.getElementById("question");
+  const question = (qEl.value || "").trim();
   if(!question){alert("请先输入你的问题");return;}
+  // 点「开始」立刻清空输入框，问题不留痕、不存本地
+  qEl.value = "";
+  try { saveMemo(); } catch(e) {}
   const out = document.getElementById("chat-out");
 
   if(draws.length === 0){
@@ -1655,7 +1659,7 @@ document.addEventListener("drop", (e) => {
 });
 
 // ===== 输入框记忆：近N期 / 触发号码 / 候选池 / 问题，下次打开都还在 =====
-const MEMO_IDS = ["diag-n", "triggers", "bt-triggers", "bt-pool", "question"];
+const MEMO_IDS = ["diag-n", "triggers", "bt-triggers", "bt-pool"];
 function saveMemo(){
   const m = {};
   MEMO_IDS.forEach(id => { const el = document.getElementById(id); if(el) m[id] = el.value; });
@@ -1668,6 +1672,13 @@ function loadMemo(){
     const el = document.getElementById(id);
     if(el && m[id] !== undefined && m[id] !== "") el.value = m[id];
   });
+  // 问过的问题一律不留：清掉旧记录，输入框永远从空白开始
+  try {
+    var q = document.getElementById("question");
+    if(q) q.value = "";
+    delete m.question;
+    localStorage.setItem("lottery_inputs", JSON.stringify(m));
+  } catch(e) {}
 }
 document.addEventListener("input", e => { if(e.target && MEMO_IDS.indexOf(e.target.id) >= 0){ if(e.target.id === "triggers") triggerManual = true; saveMemo(); } });
 document.addEventListener("change", e => { if(e.target && MEMO_IDS.indexOf(e.target.id) >= 0) saveMemo(); });
