@@ -3209,7 +3209,7 @@ function setAutoRelock(v){
   try { arenaRender(); } catch(e) {}
 }
 function b7Sig(){
-  return ["v3", (B7.epoch || 0), (B7.samples || 0), (B7.dataLen || 0), (ZOD.epochs || 0), (B7.val ? 1 : 0), catchupList().length, missBook().length].join("|");
+  return ["v4", (B7.epoch || 0), (B7.samples || 0), (B7.dataLen || 0), (ZOD.epochs || 0), (B7.val ? 1 : 0), catchupList().length, missBook().length].join("|");
 }
 function arenaSig(){
   return [(ARENA.round || 0), (ARENA.total || 0), (ARENA.lastResult ? 1 : 0), (ZOD_A.epochs || 0), catchupList().length, missBook().length].join("|");
@@ -3479,6 +3479,15 @@ function b7Render(head){  var box = document.getElementById("b7-out");
     lines.push("【下一期 · 生肖（本页专属生肖模型，和竞技页各学各的 · 热→冷）】");
     lines.push("10 肖： " + zr.slice(0, 10).map(function(o){ return o.z; }).join(" "));
     lines.push("6 肖： " + zr.slice(0, 6).map(function(o){ return o.z; }).join(" "));
+    // 一肖一码：只挑生肖模型最看好的那一个肖，再从它的号码里取模型概率最高的一个号
+    var zTop = zr[0].z, nTop = null;
+    for (var q9 = 0; q9 < ord0.length; q9++){
+      if (zodiacOf(ord0[q9].n, nIdx) === zTop){ nTop = ord0[q9]; break; }
+    }
+    if (nTop){
+      lines.push("【一肖一码 · 就这一注】一肖： " + zTop + "　一号： " + pad2(nTop.n)
+               + "（生肖 " + zTop + "，概率 " + (nTop.p * 100).toFixed(2) + "%）");
+    }
     lines.push("生肖号码来源： " + zs10.map(function(z){ return z + "(" + zm10[z].join(" ") + ")"; }).join("  "));
     [24, 18, 12].forEach(function(k){
       var ns = ord0.slice(0, k).map(function(o){ return o.n; });
