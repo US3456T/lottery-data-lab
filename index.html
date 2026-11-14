@@ -770,6 +770,7 @@ function switchMarket(m){
     b7Render();
   } catch(e) {}
   try { ZOD.m = null; ZOD.dataLen = 0; ZOD.trainedOnce = false; ZOD.val = null; ZOD.epochs = 0; zodLoad(); } catch(e) {}
+  try { ZOD_A.m = null; ZOD_A.dataLen = 0; ZOD_A.trainedOnce = false; ZOD_A.val = null; ZOD_A.epochs = 0; zodLoad(ZOD_A); } catch(e) {}
   try { ARENA.lastPreds = null; ARENA.lastResult = null; ARENA.agg = null; ARENA.round = 0; ARENA.total = 0; } catch(e) {}
   var saved = null;
   try { saved = localStorage.getItem(mkey("lottery_data")); } catch(e) {}
@@ -2279,8 +2280,8 @@ function arenaStart(){
   arenaBuildPre();
   // 生肖模型也一起跑：先确保它学过历史，再验一遍
   try {
-    zodEnsure();
-    if (!ZOD.val) ZOD.val = zodValidate();
+    zodEnsure(ZOD_A);
+    if (!ZOD_A.val) ZOD_A.val = zodValidate(ZOD_A);
   } catch(e) {}
   arenaTick();
 }
@@ -2413,8 +2414,8 @@ function arenaNextBlock(){
     return pad2(n) + " " + (a.zod || "-") + " " + a.color + " 尾" + a.tail + " " + Math.floor(n / 10) + "头 合" + a.sum + " " + a.odd + a.big;
   };
   // 生肖：改用「生肖模型」自己跑出来的 12 肖排名（热→冷），号码来源仍取引擎 24 码里属于该肖的号
-  if (!ZOD.m) zodInit(false);
-  var zr = zodNextRank();
+  if (!ZOD_A.m) zodInit(false, ZOD_A);
+  var zr = zodNextRank(ZOD_A);
   var zs = zr.slice(0, 10).map(function(o){ return o.z; });
   var zm = {};
   for (var tz = 0; tz < zs.length; tz++){
@@ -2430,7 +2431,7 @@ function arenaNextBlock(){
   out.push("【下一期 · " + marketName() + " · 第 " + nextIssueNo(lastIssue) + " 期 · 冠军引擎「" + ch.model + "」口径】");
   out.push("首选特码（第 7 个）：" + att(base[0]));
   out.push("");
-  out.push("【下一期 · 生肖（生肖模型 12 肖 单独跑的排名 · 热→冷）】");
+  out.push("【下一期 · 生肖（本页专属生肖模型，和特码页各学各的 · 热→冷）】");
   out.push("10 肖：" + zr.slice(0, 10).map(function(o){ return o.z; }).join(" "));
   out.push("6 肖：" + zr.slice(0, 6).map(function(o){ return o.z; }).join(" "));
   out.push("生肖号码来源（每肖的号从小到大）：" + zs.map(function(z2){ return z2 + "(" + asc(zm[z2] || []) + ")"; }).join("  "));
@@ -2790,29 +2791,35 @@ function b7seedRnd(seed){
 }
 // ===== 生肖模型：12 肖 softmax，单独训练（不是从号码里凑出来的） =====
 var ZOD_LIST = ["鼠", "牛", "虎", "兔", "龙", "蛇", "马", "羊", "猴", "鸡", "狗", "猪"];
-var ZOD = { m: null, H: 16, lr: 0.05, epochs: 0, val: null };
-function zodInit(force){
-  if (!force && ZOD.m) return;
-  var D = 72, H = ZOD.H, O = 12, rnd = b7seedRnd(20261114);
+// 两套独立的生肖模型：特码页（K=6 期输入）／竞技页（K=4 期输入），权重各存各的 key，互不共享
+var ZOD = { m: null, H: 16, lr: 0.05, epochs: 0, val: null, K: 6, seed: 20261114, key: "zod_model" };
+var ZOD_A = { m: null, H: 16, lr: 0.06, epochs: 0, val: null, K: 4, seed: 88001122, key: "zod_model_arena" };
+function zodInit(force, z){
+  z = z || ZOD;
+  if (!force && z.m) return;
+  var D = 72, H = z.H, O = 12, rnd = b7seedRnd(z.seed);
   var W1 = new Float64Array(D * H), b1 = new Float64Array(H);
   var W2 = new Float64Array(H * O), b2 = new Float64Array(O);
   for (var i = 0; i < D * H; i++) W1[i] = (rnd() - 0.5) * 0.14;
   for (var j = 0; j < H * O; j++) W2[j] = (rnd() - 0.5) * 0.3;
-  ZOD.m = { W1: W1, b1: b1, W2: W2, b2: b2, n: 0 };
-  ZOD.epochs = 0;
+  z.m = { W1: W1, b1: b1, W2: W2, b2: b2, n: 0 };
+  z.epochs = 0;
 }
-function zodFeat(i){
-  var x = new Float64Array(72);
-  for (var k = 1; k <= 6; k++){
+function zodFeat(i, z){
+  z = z || ZOD;
+  var x = new Float64Array(72), K = z.K || 6;
+  for (var k = 1; k <= K; k++){
     var j = i - k;
     if (j < 0) continue;
-    var z = ZOD_LIST.indexOf(zodiacOf(draws[j].special, j));
-    if (z >= 0) x[(6 - k) * 12 + z] = 1;
+    var zz = ZOD_LIST.indexOf(zodiacOf(draws[j].special, j));
+    if (zz >= 0) x[(K - k) * 12 + zz] = 1;
   }
   return x;
 }
-function zodNet(x, truth){
-  var D = 72, H = ZOD.H, O = 12, m = ZOD.m;
+function zodNet(x, truth, z){
+  z = z || ZOD;
+  var D = 72, H = z.H, O = 12, m = z.m;
+  if (!m) return null;
   var h = new Float64Array(H), p = new Float64Array(O);
   for (var j = 0; j < H; j++){
     var s = m.b1[j];
@@ -2838,7 +2845,7 @@ function zodNet(x, truth){
     for (var f = 0; f < O; f++) g += m.W2[e * O + f] * dl[f];
     dh[e] = h[e] > 0 ? g : 0;
   }
-  var lr = ZOD.lr;
+  var lr = z.lr;
   for (var k4 = 0; k4 < O; k4++){
     for (var j5 = 0; j5 < H; j5++) m.W2[j5 * O + k4] -= lr * dl[k4] * h[j5];
     m.b2[k4] -= lr * dl[k4];
@@ -2850,34 +2857,35 @@ function zodNet(x, truth){
   m.n++;
   return p;
 }
-function zodTrainOn(idxList, epochs){  zodInit(false);  var rnd = b7seedRnd(556677);
+function zodTrainOn(idxList, epochs, z){  z = z || ZOD;  zodInit(false, z);  var rnd = b7seedRnd(556677 + (z === ZOD_A ? 13 : 0));
   for (var e = 0; e < epochs; e++){
     var order = idxList.slice();
     for (var i = order.length - 1; i > 0; i--){ var j = Math.floor(rnd() * (i + 1)); var t = order[i]; order[i] = order[j]; order[j] = t; }
     for (var q = 0; q < order.length; q++){
       var idx = order[q], d = draws[idx];
-      var z = ZOD_LIST.indexOf(zodiacOf(d.special, idx));
-      if (z < 0) continue;
-      zodNet(zodFeat(idx), z);
+      var zz = ZOD_LIST.indexOf(zodiacOf(d.special, idx));
+      if (zz < 0) continue;
+      zodNet(zodFeat(idx, z), zz, z);
     }
   }
-  ZOD.epochs += epochs;
+  z.epochs += epochs;
 }
 // 错题加训（生肖）：错过的期再喂 2 遍给生肖模型
-function zodCatchupTrain(){
+function zodCatchupTrain(z){
+  z = z || ZOD;
   var cu = catchupList();
-  if (!cu.length || !ZOD.m) return;
+  if (!cu.length || !z.m) return;
   for (var c1 = 0; c1 < cu.length; c1++){
     for (var c2 = 0; c2 < draws.length; c2++){
       if (String(draws[c2].issue) !== String(cu[c1])) continue;
-      var z = ZOD_LIST.indexOf(zodiacOf(draws[c2].special, c2));
-      if (z < 0) break;
-      for (var zr2 = 0; zr2 < 10; zr2++) zodNet(zodFeat(c2), z);
+      var zz = ZOD_LIST.indexOf(zodiacOf(draws[c2].special, c2));
+      if (zz < 0) break;
+      for (var zr2 = 0; zr2 < 10; zr2++) zodNet(zodFeat(c2, z), zz, z);
       break;
     }
   }
-  ZOD.epochs += 1;
-  zodSave();
+  z.epochs += 1;
+  zodSave(z);
 }
 function zodIdxList(){
   var out = [];
@@ -2889,66 +2897,71 @@ function zodIdxList(){
   }
   return out;
 }
-function zodPredictAt(i){
-  if (!ZOD.m) zodInit(true);
-  var p = zodNet(zodFeat(i), null);
+function zodPredictAt(i, z){
+  z = z || ZOD;
+  if (!z.m) zodInit(true, z);
+  var p = zodNet(zodFeat(i, z), null, z);
   var arr = [];
   for (var k = 0; k < 12; k++) arr.push({ z: ZOD_LIST[k], p: p[k] });
   arr.sort(function(a, b){ return b.p - a.p || ZOD_LIST.indexOf(a.z) - ZOD_LIST.indexOf(b.z); });
   return arr;
 }
-function zodSave(){
+function zodSave(z){
+  z = z || ZOD;
   try {
-    if (!ZOD.m) return;
-    var o = { W1: Array.from(ZOD.m.W1), b1: Array.from(ZOD.m.b1),
-              W2: Array.from(ZOD.m.W2), b2: Array.from(ZOD.m.b2),
-              n: ZOD.m.n, epochs: ZOD.epochs, dataLen: draws.length,
-              val: ZOD.val, at: new Date().toISOString().slice(0, 16).replace("T", " ") };
-    localStorage.setItem(mkey("zod_model"), JSON.stringify(o));
-    ZOD.savedAt = o.at;
+    if (!z.m) return;
+    var o = { W1: Array.from(z.m.W1), b1: Array.from(z.m.b1),
+              W2: Array.from(z.m.W2), b2: Array.from(z.m.b2),
+              n: z.m.n, epochs: z.epochs, dataLen: draws.length,
+              val: z.val, at: new Date().toISOString().slice(0, 16).replace("T", " ") };
+    localStorage.setItem(mkey(z.key), JSON.stringify(o));
+    z.savedAt = o.at;
   } catch(e) {}
 }
-function zodLoad(){
+function zodLoad(z){
+  z = z || ZOD;
   try {
-    var o = JSON.parse(localStorage.getItem(mkey("zod_model")) || "null");
+    var o = JSON.parse(localStorage.getItem(mkey(z.key)) || "null");
     if (!o || !o.W1) return false;
-    ZOD.m = { W1: new Float64Array(o.W1), b1: new Float64Array(o.b1),
+    z.m = { W1: new Float64Array(o.W1), b1: new Float64Array(o.b1),
               W2: new Float64Array(o.W2), b2: new Float64Array(o.b2), n: o.n || 0 };
-    ZOD.epochs = o.epochs || 0;
-    ZOD.dataLen = o.dataLen || 0;
-    ZOD.val = o.val || null;
-    ZOD.savedAt = o.at || "";
+    z.epochs = o.epochs || 0;
+    z.dataLen = o.dataLen || 0;
+    z.val = o.val || null;
+    z.savedAt = o.at || "";
     return true;
   } catch(e) { return false; }
 }
-function zodEnsure(){
-  if (!ZOD.m) zodLoad();
-  if (ZOD.m && ZOD.dataLen === draws.length && ZOD.m.n){ ZOD.trainedOnce = true; zodCatchupTrain(); return; }
-  if (ZOD.m && ZOD.dataLen && ZOD.dataLen < draws.length){
+function zodEnsure(z){
+  z = z || ZOD;
+  if (!z.m) zodLoad(z);
+  if (z.m && z.dataLen === draws.length && z.m.n){ z.trainedOnce = true; zodCatchupTrain(z); return; }
+  if (z.m && z.dataLen && z.dataLen < draws.length){
     // 有新开奖 → 接着学（增量喂几遍，不会把学过的丢掉）
-    zodTrainOn(zodIdxList(), 3);
-    ZOD.dataLen = draws.length;
-    zodSave();
-    ZOD.trainedOnce = true;
-    zodCatchupTrain();
+    zodTrainOn(zodIdxList(), 3, z);
+    z.dataLen = draws.length;
+    zodSave(z);
+    z.trainedOnce = true;
+    zodCatchupTrain(z);
     return;
   }
-  zodInit(true);
-  zodTrainOn(zodIdxList(), 10);
-  ZOD.dataLen = draws.length;
-  zodSave();
-  ZOD.trainedOnce = true;
+  zodInit(true, z);
+  zodTrainOn(zodIdxList(), 10, z);
+  z.dataLen = draws.length;
+  zodSave(z);
+  z.trainedOnce = true;
 }
-function zodNextRank(){
-  zodEnsure();
-  var arr = zodPredictAt(draws.length);
+function zodNextRank(z){
+  z = z || ZOD;
+  zodEnsure(z);
+  var arr = zodPredictAt(draws.length, z);
   var penZ = zodPenaltyMap();
   arr.forEach(function(o){ o.s = o.p * (1 - Math.min(0.25, 0.06 * (penZ[o.z] || 0))); });
   arr.sort(function(a, b){ return b.s - a.s || ZOD_LIST.indexOf(a.z) - ZOD_LIST.indexOf(b.z); });
   var cnt = {};
   for (var n = 1; n <= 49; n++){
-    var z = zodiacOf(n, draws.length);
-    cnt[z] = (cnt[z] || 0) + 1;
+    var zz = zodiacOf(n, draws.length);
+    cnt[zz] = (cnt[zz] || 0) + 1;
   }
   arr.forEach(function(o){ o.cnt = cnt[o.z] || 0; });
   return arr;
@@ -2958,18 +2971,19 @@ function zodiacNumShare(list, idx){
   for (var n = 1; n <= 49; n++) if (list.indexOf(zodiacOf(n, idx)) >= 0) c++;
   return c / 49;
 }
-function zodValidate(){
+function zodValidate(z){
+  z = z || ZOD;
   var idx = zodIdxList();
   if (idx.length < 60) return null;
   var hold = Math.min(B7.hold || 200, Math.floor(idx.length * 0.2));
   var cut = Math.max(1, idx.length - hold);
-  zodInit(true);
-  zodTrainOn(idx.slice(0, cut), 10);
+  zodInit(true, z);
+  zodTrainOn(idx.slice(0, cut), 10, z);
   var t6 = 0, t10 = 0, r6 = 0, r10 = 0, n = 0;
   for (var q = cut; q < idx.length; q++){
     var i2 = idx[q], d2 = draws[i2];
     var z2 = zodiacOf(d2.special, i2);
-    var pr = zodPredictAt(i2);
+    var pr = zodPredictAt(i2, z);
     var top10 = pr.slice(0, 10).map(function(o){ return o.z; });
     var top6 = pr.slice(0, 6).map(function(o){ return o.z; });
     n++;
@@ -2982,12 +2996,12 @@ function zodValidate(){
     n: n,
     hit6: +(100 * t6 / n).toFixed(2), hit10: +(100 * t10 / n).toFixed(2),
     rnd6: +(100 * r6 / n).toFixed(2), rnd10: +(100 * r10 / n).toFixed(2),
-    epochs: ZOD.epochs
+    epochs: z.epochs
   };
-  zodTrainOn(idx, 4);   // 预测下一期时用全部历史再喂几遍
-  ZOD.dataLen = draws.length;
-  ZOD.trainedOnce = true;
-  zodSave();
+  zodTrainOn(idx, 4, z);   // 预测下一期时用全部历史再喂几遍
+  z.dataLen = draws.length;
+  z.trainedOnce = true;
+  zodSave(z);
   return res;
 }
 function b7Init(force){
@@ -3191,7 +3205,7 @@ function b7Sig(){
   return [(B7.epoch || 0), (B7.samples || 0), (B7.dataLen || 0), (ZOD.epochs || 0), (B7.val ? 1 : 0), catchupList().length, missBook().length].join("|");
 }
 function arenaSig(){
-  return [(ARENA.round || 0), (ARENA.total || 0), (ARENA.lastResult ? 1 : 0), (ZOD.epochs || 0), catchupList().length, missBook().length].join("|");
+  return [(ARENA.round || 0), (ARENA.total || 0), (ARENA.lastResult ? 1 : 0), (ZOD_A.epochs || 0), catchupList().length, missBook().length].join("|");
 }
 // ===== 错题本：这一注错了 → 下一期把错过的号降权，并把这一期加训两遍（真的改权重，不是摆样子）=====
 function missBook(){
@@ -3460,7 +3474,7 @@ function b7Render(head){  var box = document.getElementById("b7-out");
       zm10[z1] = inTop.sort(function(a, b){ return a - b; }).slice(0, 4).map(pad2);
     }
     lines.push("");
-    lines.push("【下一期 · 生肖（生肖模型自己跑的排名 · 热→冷）】");
+    lines.push("【下一期 · 生肖（本页专属生肖模型，和竞技页各学各的 · 热→冷）】");
     lines.push("10 肖： " + zr.slice(0, 10).map(function(o){ return o.z; }).join(" "));
     lines.push("6 肖： " + zr.slice(0, 6).map(function(o){ return o.z; }).join(" "));
     lines.push("生肖号码来源： " + zs10.map(function(z){ return z + "(" + zm10[z].join(" ") + ")"; }).join("  "));
