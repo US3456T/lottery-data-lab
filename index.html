@@ -257,9 +257,9 @@ button.primary:hover { background: var(--accent); }
     <div class="tab-pane" id="pane-break7">
       <div class="row">
         <label>每轮学习期数：</label>
-        <input type="text" id="b7-span" value="3000" style="width:90px" title="0 = 全部历史；填 3000 就每轮只用最近 3000 期">
+        <input type="text" id="b7-span" value="3000" style="width:90px" title="0 = 全部历史；填 3000 就每轮只用最近 3000 期" oninput="b7SaveCfg(true)" onchange="b7SaveCfg(true)">
         <label>跑多少轮：</label>
-        <input type="text" id="b7-epochs" value="40" style="width:70px">
+        <input type="text" id="b7-epochs" value="40" style="width:70px" title="这个数字会记住，下次打开还是它" oninput="b7SaveCfg(true)" onchange="b7SaveCfg(true)">
         <button class="primary" onclick="b7StartTrain()">开始学习</button>
         <button onclick="b7ContinueTrain()" id="b7-resume">接着上次学</button>
         <button onclick="b7StopTrain()">停止</button>
@@ -268,6 +268,8 @@ button.primary:hover { background: var(--accent); }
       <div class="row">
         <span class="hint">规则：每轮把“每轮学习期数”那段历史（0 = 全部）反复学一遍，只用当期之前的记录训练、学完再拿留出的期验真假。轮次越多越容易背答案，不代表更准；可以放到几百轮慢慢跑。</span>
       </div>
+      <div class="row">
+        <span class="hint">「每轮学习期数」和「跑多少轮」都<b>记住了</b>（香港、澳门各记各的），下次打开还是你上次填的数。</span>
       <div class="row">
         <span class="hint">这是一个真在学的神经网络：输入 6 个平码，输出 49 个号各自的概率，权重全由历史自动训练，<b>没有任何人工加减乘除/波色/合数/生肖规则</b>。港澳两套权重分开存，数据一变自动续学。</span>
       </div>
@@ -767,6 +769,7 @@ function switchMarket(m){
   try {
     B7.m = null; B7.val = null; B7.epoch = 0; B7.samples = 0; B7.dataLen = 0; B7.track = []; B7.savedAt = ""; B7.running = false; B7.busy = false;
     b7Load();
+    try { b7FillCfg(); } catch(e) {}
     b7Render();
   } catch(e) {}
   try { ZOD.m = null; ZOD.dataLen = 0; ZOD.trainedOnce = false; ZOD.val = null; ZOD.epochs = 0; zodLoad(); } catch(e) {}
@@ -3610,7 +3613,7 @@ function b7ReadCfgRaw(){
     if (isNaN(v) || v < min) v = dflt;
     return Math.max(min, Math.min(max, v));
   };
-  var a = g("b7-span", 0, 0, 5000), b = g("b7-epochs", 40, 1, 300), c = g("b7-hold", 200, 30, 1000);
+  var a = g("b7-span", 0, 0, 5000), b = g("b7-epochs", 40, 1, 100000), c = g("b7-hold", 200, 30, 1000);
   if (a !== null) B7.span = a;
   if (b !== null) B7.epochs = b;
   if (c !== null) B7.hold = c;
@@ -3668,13 +3671,14 @@ function b7AutoCheck(){
     b7ReadCfg();
     var needFull = !B7.val;
     var rounds = needFull ? B7.epochs : B7.autoRounds;
+    var targetEpoch = B7.epoch + rounds;   // 关键：按“再加几轮”算，不是拿总数当目标
     var list = b7Window();
     var chunk = function(){
       var t0 = Date.now();
-      while (B7.epoch < (needFull ? B7.epochs : B7.roundTarget) && Date.now() - t0 < 150){
+      while (B7.epoch < targetEpoch && Date.now() - t0 < 150){
         b7Epoch(list);
       }
-      if (B7.epoch < (needFull ? B7.epochs : B7.roundTarget)){ B7.timer = setTimeout(chunk, 0); return; }
+      if (B7.epoch < targetEpoch){ B7.timer = setTimeout(chunk, 0); return; }
       B7.val = b7Validate();
       try { ZOD.val = zodValidate(); } catch(e) {}
       B7.dataLen = draws.length;
@@ -3689,7 +3693,7 @@ function b7AutoCheck(){
       var pane = document.getElementById("b7-out");
       if (pane && pane.offsetParent !== null) b7Render();
     };
-    B7.roundTarget = B7.epoch + rounds;
+    B7.roundTarget = targetEpoch;
     b7Render();
     chunk();
   } catch(e) { B7.busy = false; }
@@ -3854,6 +3858,7 @@ document.addEventListener("DOMContentLoaded", function(){
     var on = autoRelockOn();
     Array.prototype.forEach.call(document.querySelectorAll(".auto-relock-cb"), function(cb){ cb.checked = on; });
   } catch(e) {}
+  try { b7FillCfg(); } catch(e) {}
 });
 </script>
 </body>
