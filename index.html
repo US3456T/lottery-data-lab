@@ -226,6 +226,9 @@ button.primary:hover { background: var(--accent); }
         <button onclick="backupAllData()">🗄 导出（竞技+特码 一起）</button>
         <button onclick="document.getElementById('all-input').click()">📥 导入（竞技+特码 一起）</button>
         <button onclick="arenaRelock()">🔁 重新生成下一期</button>
+        <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+          <input type="checkbox" class="auto-relock-cb" onchange="setAutoRelock(this.checked)"> 学习完自动更新下一期
+        </label>
       </div>
       <div id="arena-out" class="report"></div>
     </div>
@@ -273,6 +276,9 @@ button.primary:hover { background: var(--accent); }
         <button onclick="backupAllData()">🗄 导出（竞技+特码 一起）</button>
         <button onclick="document.getElementById('all-input').click()">📥 导入（竞技+特码 一起）</button>
         <button onclick="b7Relock()">🔁 重新生成下一期</button>
+        <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+          <input type="checkbox" class="auto-relock-cb" onchange="setAutoRelock(this.checked)"> 学习完自动更新下一期
+        </label>
         <button onclick="b7ResetModel()">权重归零重学</button>
       </div>
       <div id="b7-out" class="report" style="padding:8px;"></div>
@@ -2377,7 +2383,7 @@ function arenaRender(){
     html += "<tr style='border-bottom:1px solid #ddd;'><td style='padding:5px;'>" + (idx === 0 ? "🥇 " : "") + r.model + "</td><td style='padding:5px;text-align:center;'>" + r.top1 + "%</td><td style='padding:5px;text-align:center;'>" + r.top6 + "%</td><td style='padding:5px;text-align:center;'>" + bar(r.top18, 36.73) + " " + r.top18 + "%</td><td style='padding:5px;text-align:center;color:" + (lift > 0 ? "#16a34a" : "#ef4444") + ";'>" + (lift > 0 ? "+" : "") + lift + "</td></tr>";
   });
   html += "</table>";
-  html += "<div style='margin-top:8px;font-size:12px;color:#555;line-height:1.7;'>理论随机值：单号 2.04% ／ 前6码 12.24% ／ 前18码 36.73%。<br>样本量 " + snap.totalPreds.toLocaleString() + " 次预测（" + snap.round + " 轮 × " + snap.span + " 期）。<br><b>看结论的方法</b>：只有明显高于 36.73% 才算真本事；上下摆动 1~2 个百分点是随机波动，不算。</div>";
+  html += "<div style='margin-top:8px;font-size:12px;color:#555;line-height:1.7;'>理论随机值：单号 2.04% ／ 前6码 12.24% ／ 前18码 36.73%。<br>样本量 " + snap.totalPreds.toLocaleString() + " 次预测（" + (snap.round || ARENA.round || 0) + " 轮 × " + snap.span + " 期）。<br><b>看结论的方法</b>：只有明显高于 36.73% 才算真本事；上下摆动 1~2 个百分点是随机波动，不算。</div>";
   var ht = arenaHistText();
   if (ht) html += "<div style='margin-top:10px;padding:8px;border:1px solid #ddd;border-radius:6px;background:#fafafa;font-size:12px;line-height:1.8;white-space:pre-wrap;'>" + ht + "</div>";
   var nb = arenaNextBlock();
@@ -2430,18 +2436,21 @@ function arenaNextBlock(){
   var txt = out.join("\n");
   var target = nextIssueNo(lastIssue);
   var lk = nextLockRead("arena", target);
-  if (lk && lk.text){
-    var head = (ARENA.running ? "⏳ 还在跑，但这一注已锁定，下面不会变；" : "🔒 这一注已锁定，第 " + target + " 期开出后自动换下一期；") + "想重算点「🔁 重新生成下一期」";
+  var sigA = arenaSig();
+  if (lk && lk.text && !(autoRelockOn() && lk.sig !== sigA)){
+    var head = (ARENA.running ? "⏳ 还在跑，但这一注已锁定，下面不会变；再跑一轮会自动按新成绩更新" : "🔒 这一注已锁定（第 " + target + " 期开出后自动换下一期；再跑一轮会自动按新成绩更新，想现在就重算点「🔁 重新生成下一期」）");
     return head + "\n" + lk.text;
   }
   if (ARENA.running){
     return "⏳ 正在跑，" + ARENA.round + "/" + ARENA.rounds + " 轮；跑完（或点停止）自动出下一期并锁定，跑的时候不出号。";
   }
   nextLockWrite("arena", target, txt, {
+    sig: sigA,
+    at: new Date().toLocaleString(),
     sp: base[0],
     n12: base.slice(0, 12), n18: base.slice(0, 18), n24: list24.slice(0, 24)
   });
-  return "🔒 这一注已锁定（第 " + target + " 期开出后自动换下一期；想重算点「🔁 重新生成下一期」）\n" + txt;
+  return "🔒 这一注已锁定（第 " + target + " 期开出后自动换下一期；再跑一轮会自动按新成绩更新，想现在就重算点「🔁 重新生成下一期」）\n" + txt;
 }
 function arenaStop(){ ARENA.running = false; arenaSaveChampion(arenaSnapshot()); arenaArchive(arenaSnapshot()); arenaStore(); arenaRender(); }
 
@@ -3124,6 +3133,23 @@ function nextLockWrite(kind, issue, text, extra){
 function nextLockClear(kind){
   try { localStorage.removeItem(mkey("next_lock_" + kind)); } catch(e) {}
 }
+// 「学习完自动更新下一期」：默认开。开着时，只有学习/竞技真的跑出新成绩才换这一注；
+// 平时点进点出、刷新页面，签名不变 → 一个字都不动。
+function autoRelockOn(){
+  try { return localStorage.getItem("auto_relock") !== "0"; } catch(e) { return true; }
+}
+function setAutoRelock(v){
+  try { localStorage.setItem("auto_relock", v ? "1" : "0"); } catch(e) {}
+  nextLockClear("b7"); nextLockClear("arena");
+  try { b7Render(); } catch(e) {}
+  try { arenaRender(); } catch(e) {}
+}
+function b7Sig(){
+  return [(B7.epoch || 0), (B7.samples || 0), (B7.dataLen || 0), (ZOD.epochs || 0), (B7.val ? 1 : 0)].join("|");
+}
+function arenaSig(){
+  return [(ARENA.round || 0), (ARENA.total || 0), (ARENA.lastResult ? 1 : 0), (ZOD.epochs || 0)].join("|");
+}
 // 新一期进来 → 把锁定的那一注判一下中没中，存档，然后解锁（下一期会重新锁一注）
 function nextLockResolveAll(){
   var last = draws.length ? draws[draws.length - 1] : null;
@@ -3315,21 +3341,28 @@ function b7Render(head){  var box = document.getElementById("b7-out");
     // ===== 锁定：跑完就定住，不再乱跳；等这一期开出来才换新的一注 =====
     var fresh = lines.slice(nStart);
     var lk = nextLockRead("b7", nxtIssue);
-    if (lk && lk.text){
+    var sigB = b7Sig();
+    var keepB = lk && lk.text && !(autoRelockOn() && lk.sig !== sigB);
+    if (keepB){
       lines.length = nStart;
-      lines.push("🔒 这一注已锁定（第 " + nxtIssue + " 期开出后自动换下一期；想重算点「🔁 重新生成下一期」）");
+      lines.push("🔒 这一注已锁定（第 " + nxtIssue + " 期开出后自动换下一期；再学一轮会自动按新成绩更新，想现在就重算点「🔁 重新生成下一期」）");
       lines.push(lk.text);
     } else if (B7.running){
       lines.length = nStart;
       lines.push("⏳ 正在学习，学完自动出下一期（出来就锁定，不会再跳号）。");
     } else {
+      var sigNow = b7Sig();
       nextLockWrite("b7", nxtIssue, fresh.join("\n"), {
+        sig: sigNow,
+        at: new Date().toLocaleString(),
         sp: ord0[0].n,
         n12: ord0.slice(0, 12).map(function(o){ return o.n; }),
         n18: ord0.slice(0, 18).map(function(o){ return o.n; }),
         n24: ord0.slice(0, 24).map(function(o){ return o.n; })
       });
-      lines.push("🔒 这一注已锁定（第 " + nxtIssue + " 期开出后自动换下一期；想重算点「🔁 重新生成下一期」）");
+      lines.length = nStart;
+      lines.push("🔒 这一注已锁定（第 " + nxtIssue + " 期开出后自动换下一期；再学一轮会自动按新成绩更新，想现在就重算点「🔁 重新生成下一期」）");
+      lines.push(fresh.join("\n"));
     }
     var nh = nextHistText();
     if (nh) lines.push(""), lines.push(nh);
@@ -3662,6 +3695,10 @@ document.addEventListener("DOMContentLoaded", function(){
   setInterval(ledgerAutoCheck, 5000);
   setTimeout(function(){ try { refreshSeqBar(); } catch(e) {} }, 200);
   setTimeout(function(){ try { remoteCompare(); } catch(e) {} }, 2500);
+  try {
+    var on = autoRelockOn();
+    Array.prototype.forEach.call(document.querySelectorAll(".auto-relock-cb"), function(cb){ cb.checked = on; });
+  } catch(e) {}
 });
 </script>
 </body>
