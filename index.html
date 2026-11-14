@@ -3522,7 +3522,7 @@ function b7Render(head){  var box = document.getElementById("b7-out");
       lines.push(lk.text);
     } else if (B7.running){
       lines.length = nStart;
-      lines.push("⏳ 还在学，下面是按当前权重的临时版（学完会自动更新并锁定；已经固定在里面的注不受影响）");
+      lines.push("⏳ 还在学。下面这份是点「开始学习」之前的那一版，学的时候不会跟着跳；想换新的号码和生肖，点「🔁 重新生成下一期」。");
       lines.push(fresh.join("\n"));
     } else {
       var sigNow = b7Sig();
@@ -3557,7 +3557,7 @@ function b7StartTrain(){
   b7ReadCfg();
   if (!B7.m) b7Load();
   b7Init(false);
-  B7.running = true; B7.val = null; B7.t0 = Date.now();
+  B7.running = true; B7.t0 = Date.now();
   var target = B7.epoch + B7.epochs;
   B7.roundTarget = target;
   var tick = function(){
@@ -3584,6 +3584,7 @@ function b7StartTrain(){
   };
   b7Render();
   B7.freezeShow = (B7.frozenHtml && draws.length) ? nextIssueNo(draws[draws.length - 1].issue) : null;
+  B7.val = null;
   tick();
 }
 function b7ContinueTrain(){
