@@ -3202,7 +3202,7 @@ function setAutoRelock(v){
   try { arenaRender(); } catch(e) {}
 }
 function b7Sig(){
-  return [(B7.epoch || 0), (B7.samples || 0), (B7.dataLen || 0), (ZOD.epochs || 0), (B7.val ? 1 : 0), catchupList().length, missBook().length].join("|");
+  return ["v3", (B7.epoch || 0), (B7.samples || 0), (B7.dataLen || 0), (ZOD.epochs || 0), (B7.val ? 1 : 0), catchupList().length, missBook().length].join("|");
 }
 function arenaSig(){
   return [(ARENA.round || 0), (ARENA.total || 0), (ARENA.lastResult ? 1 : 0), (ZOD_A.epochs || 0), catchupList().length, missBook().length].join("|");
@@ -3484,6 +3484,8 @@ function b7Render(head){  var box = document.getElementById("b7-out");
       lines.push(k + " 码一行速览（从小到大）： " + asc.map(pad2).join(" "));
     });
     lines.push("上一期（第 " + last0.issue + " 期）已经开过了，不再回头看；上面全是给下一期用的。");
+    lines.push("12 个特码 一行速览（按概率高→低）： " + ord0.slice(0, 12).map(function(o){ return pad2(o.n); }).join(" "));
+    lines.push("（这 12 个号就是本页 12 个特码候选；这么排是按概率高低，上面那行「12 码」是同一组号从小到大，两种看法）");
     // ===== 锁定：跑完就定住，不再乱跳；等这一期开出来才换新的一注 =====
     var fresh = lines.slice(nStart);
     var lk = nextLockRead("b7", nxtIssue);
