@@ -269,6 +269,9 @@ button.primary:hover { background: var(--accent); }
         <span class="hint">规则：每轮把“每轮学习期数”那段历史（0 = 全部）反复学一遍，只用当期之前的记录训练、学完再拿留出的期验真假。轮次越多越容易背答案，不代表更准；可以放到几百轮慢慢跑。</span>
       </div>
       <div class="row">
+        <span class="hint">学习的时候，下面那整块号码/生肖/尾数/波色<b>一律定住不动</b>（只有上面「进度」那行在走）；想换新的号码和生肖，按一下「🔁 重新生成下一期」才会变一次。</span>
+      </div>
+      <div class="row">
         <span class="hint">「每轮学习期数」和「跑多少轮」都<b>记住了</b>（香港、澳门各记各的），下次打开还是你上次填的数。</span>
       </div>
       <div class="row">
@@ -768,7 +771,7 @@ function switchMarket(m){
   try { LEDGER.rows = []; LEDGER.sig = ""; LEDGER.model = null; LEDGER.pos = null; } catch(e) {}
   // 特码 AI 与竞技：都换成这一家自己的（下一期清单跟着市场走）
   try {
-    B7.m = null; B7.val = null; B7.epoch = 0; B7.samples = 0; B7.dataLen = 0; B7.track = []; B7.savedAt = ""; B7.running = false; B7.busy = false;
+    B7.m = null; B7.val = null; B7.epoch = 0; B7.samples = 0; B7.dataLen = 0; B7.track = []; B7.savedAt = ""; B7.running = false; B7.busy = false; B7.freezeShow = null;
     b7Load();
     try { b7FillCfg(); } catch(e) {}
     b7Render();
@@ -3387,6 +3390,13 @@ function b7Render(head){  var box = document.getElementById("b7-out");
   b7Progress("进度 " + B7.epoch + " / " + target + " 轮　已训练 " + (B7.samples || 0) + " 次样本　市场：" + marketName() + (B7.running ? "（跑着呢，可以切去别的页签）" : ""));
   var rbtn = document.getElementById("b7-resume");
   if (rbtn) rbtn.textContent = "接着上次学" + (B7.m && B7.savedAt ? "（" + B7.epoch + "/" + target + " 轮）" : "");
+  // 学习的时候只动「进度」这一行，下面整块号码/生肖/尾数/波色一律定住不动，
+  // 只有点了「🔁 重新生成下一期」或者来了新一期，才换新的号码和生肖。
+  if (B7.freezeShow){
+    if (!draws.length) return;
+    if (B7.freezeShow === nextIssueNo(draws[draws.length - 1].issue)) return;
+    B7.freezeShow = null;
+  }
   var split = b7Split();
   if (false && B7.track.length){
     var prev = B7.track.length > 1 ? B7.track[B7.track.length - 2] : null;
@@ -3569,6 +3579,7 @@ function b7StartTrain(){
     }
   };
   b7Render();
+  B7.freezeShow = draws.length ? nextIssueNo(draws[draws.length - 1].issue) : null;
   tick();
 }
 function b7ContinueTrain(){
@@ -3586,7 +3597,7 @@ function b7Progress(txt){
   var el = document.getElementById("b7-progress");
   if (el) el.textContent = txt;
 }
-function b7StopTrain(){ B7.running = false; if (B7.timer){ clearTimeout(B7.timer); B7.timer = null; } B7.val = b7Validate(); b7Save(); b7Render("已停止学习，已把当前进度存盘。"); }
+function b7StopTrain(){ B7.running = false; if (B7.timer){ clearTimeout(B7.timer); B7.timer = null; } B7.val = b7Validate(); b7Save(); b7Render("已停止学习，已把当前进度存盘。"); b7Progress("已停止学习，进度已存盘（下面的号码没动，想换新的点「🔁 重新生成下一期」）"); }
 // 读取/保存学习设置（按市场各自记住）
 function b7ReadCfg(){
   b7ReadCfgRaw();
@@ -3631,6 +3642,7 @@ function b7ReadCfgRaw(){
 }
 function b7Relock(){
   nextLockClear("b7");
+  B7.freezeShow = null;          // 只有这一步才会重新算一遍号码和生肖
   if (typeof b7Render === "function") b7Render("已重新生成下一期（旧的一注作废）。");
 }
 function arenaRelock(){
@@ -3704,6 +3716,7 @@ function b7AutoCheck(){
       if (pane && pane.offsetParent !== null) b7Render();
     };
     B7.roundTarget = targetEpoch;
+    B7.freezeShow = draws.length ? nextIssueNo(draws[draws.length - 1].issue) : null;
     b7Render();
     chunk();
   } catch(e) { B7.busy = false; }
