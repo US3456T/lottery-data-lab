@@ -708,7 +708,7 @@ function openChecked(){
 
 // ===== Tab切换 =====
 document.querySelectorAll(".tab").forEach(btn=>{
-  btn.onclick=()=>{document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));document.querySelectorAll(".tab-pane").forEach(p=>p.classList.remove("active"));btn.classList.add("active");document.getElementById("pane-"+btn.dataset.tab).classList.add("active"); if(btn.dataset.tab==="auto"){ try{ renderAutoPage(); }catch(e){} } if(btn.dataset.tab==="arena"){ try{ arenaRestore(); }catch(e){} } if(btn.dataset.tab==="break7"){ try{ b7FillCfg(); if(!B7.m) b7Load(); b7Init(false); b7Render(); b7AutoCheck(); }catch(e){} } };
+  btn.onclick=()=>{document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));document.querySelectorAll(".tab-pane").forEach(p=>p.classList.remove("active"));btn.classList.add("active");document.getElementById("pane-"+btn.dataset.tab).classList.add("active"); if(btn.dataset.tab==="auto"){ try{ renderAutoPage(); }catch(e){} } if(btn.dataset.tab==="arena"){ try{ arenaRestore(); }catch(e){} try{ arenaRender(); }catch(e){ var ao=document.getElementById("arena-out"); if(ao) ao.innerHTML="<div style='padding:8px;font-size:12px;color:#b91c1c;'>页面出错："+(e&&e.message?e.message:e)+"（点「开始竞技」重试，或把这句话发给我）</div>"; } } if(btn.dataset.tab==="break7"){ try{ b7FillCfg(); if(!B7.m) b7Load(); b7Init(false); b7Render(); b7AutoCheck(); }catch(e){} } };
 });
 
 // ===== 页面操作 =====
@@ -2358,6 +2358,8 @@ function arenaRender(){
       + "跑完这里会出现 12 个引擎的排名表，第一名会显示 👑 冠军；机器慢的话可以把期数改成 500、轮数改成 5 先试。</div>";
     var ht0 = arenaHistText();
     if (ht0) out.innerHTML += "<div style='margin-top:8px;padding:8px;border:1px solid #ddd;border-radius:6px;background:#fafafa;font-size:12px;line-height:1.8;white-space:pre-wrap;'>" + ht0 + "</div>";
+    var nb0 = arenaNextBlock();
+    if (nb0) out.innerHTML += "<div style='margin-top:8px;padding:8px;border:1px solid #16a34a;border-radius:6px;background:#f0fdf4;font-size:12px;line-height:1.9;white-space:pre-wrap;'>" + nb0 + "</div>";
     return;
   }
   var snap = arenaSnapshot();
@@ -2394,7 +2396,12 @@ function arenaRender(){
 function arenaNextBlock(){
   var ch = arenaChampion();
   var preds = ARENA.lastPreds;
-  if (!ch || !preds || !preds[ch.model] || !draws.length) return "";
+  if (!draws.length) return "先到【历史数据】页载入数据，这里才出下一期。";
+  if (!ch || !preds || !preds[ch.model]) {
+    return ARENA.running
+      ? "⏳ 正在跑，" + ARENA.round + "/" + ARENA.rounds + " 轮；跑完这里会出下一期（10 肖 + 24/18/12 码 + 6 平码）。"
+      : "还没跑过，先点「开始竞技」跑几轮；跑完这里会出下一期（10 肖 + 24/18/12 码 + 6 平码）。";
+  }
   var base = preds[ch.model].slice();      // 冠军引擎自己跑出来的 24 码排名
   var list24 = base.slice(0, 24);
   var nIdx = draws.length; // 下一期的生肖表
@@ -2442,7 +2449,7 @@ function arenaNextBlock(){
     return head + "\n" + lk.text;
   }
   if (ARENA.running){
-    return "⏳ 正在跑，" + ARENA.round + "/" + ARENA.rounds + " 轮；跑完（或点停止）自动出下一期并锁定，跑的时候不出号。";
+    return "⏳ 正在跑，" + ARENA.round + "/" + ARENA.rounds + " 轮；下面是当前冠军的临时版，跑完自动更新并锁定。\n" + txt;
   }
   nextLockWrite("arena", target, txt, {
     sig: sigA,
@@ -3349,7 +3356,8 @@ function b7Render(head){  var box = document.getElementById("b7-out");
       lines.push(lk.text);
     } else if (B7.running){
       lines.length = nStart;
-      lines.push("⏳ 正在学习，学完自动出下一期（出来就锁定，不会再跳号）。");
+      lines.push("⏳ 还在学，下面是按当前权重的临时版（学完会自动更新并锁定；已经固定在里面的注不受影响）");
+      lines.push(fresh.join("\n"));
     } else {
       var sigNow = b7Sig();
       nextLockWrite("b7", nxtIssue, fresh.join("\n"), {
