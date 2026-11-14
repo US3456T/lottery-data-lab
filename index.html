@@ -1180,7 +1180,7 @@ async function backupData(){
 }
 
 // ===== 全部数据备份 / 导入恢复（历史记录 + AI 学习权重 + 学习设置 + 竞技进度与档案 + 冠军）=====
-const ALL_PREFIX = ["lottery_data", "b7_model", "b7_cfg", "arena", "arena_cfg", "arena_hist", "ai_champion", "ai_", "lottery_inputs", "lottery_market", "view_limit", "market_hint", "lottery_current", "next_lock", "next_hist", "zod_model"];
+const ALL_PREFIX = ["lottery_data", "b7_model", "b7_cfg", "arena", "arena_cfg", "arena_hist", "ai_champion", "ai_", "lottery_inputs", "lottery_market", "view_limit", "market_hint", "lottery_current", "next_lock", "next_hist", "zod_model", "miss_book", "zod_miss_book", "catchup", "auto_relock"];
 function allStoreKeys(){
   const out = [];
   for (let i = 0; i < localStorage.length; i++){
@@ -2403,6 +2403,8 @@ function arenaNextBlock(){
       : "还没跑过，先点「开始竞技」跑几轮；跑完这里会出下一期（10 肖 + 24/18/12 码 + 6 平码）。";
   }
   var base = preds[ch.model].slice();      // 冠军引擎自己跑出来的 24 码排名
+  var penA = missPenaltyMap();
+  base.sort(function(a, b){ return (penA[a] || 0) - (penA[b] || 0); });  // 错过的号往后挪（排序稳定，没错过的顺序不变）
   var list24 = base.slice(0, 24);
   var nIdx = draws.length; // 下一期的生肖表
   var lastIssue = draws[draws.length - 1].issue;
@@ -2439,7 +2441,10 @@ function arenaNextBlock(){
   out.push("");
   out.push("6 个平码（前 6 个，避开首选特码，从小到大）：" + asc(pk));
   out.push("  明细：" + pk.map(att).join("　｜　"));
-  out.push("（号码一律从小到大排；生肖顺序＝冠军引擎自己排名的先后，越靠前越热。全部是它自己跑出来的，没有外加任何手工规则；下一期是重新抽号，命中率看上面表格。）");
+  out.push("（号码一律从小到大排；生肖顺序＝生肖模型自己排名的先后，越靠前越热。全部是它自己跑出来的，没有外加任何手工规则；下一期是重新抽号，命中率看上面表格。）");
+  var mpA = missPenText(); if (mpA) out.push(""), out.push(mpA);
+  var ctA = catchupText(); if (ctA) out.push(ctA);
+  var zpA = zodMissPenText(); if (zpA) out.push(zpA);
   var txt = out.join("\n");
   var target = nextIssueNo(lastIssue);
   var lk = nextLockRead("arena", target);
@@ -2455,6 +2460,7 @@ function arenaNextBlock(){
     sig: sigA,
     at: new Date().toLocaleString(),
     sp: base[0],
+    z10: zs, z6: zr.slice(0, 6).map(function(o){ return o.z; }),
     n12: base.slice(0, 12), n18: base.slice(0, 18), n24: list24.slice(0, 24)
   });
   return "🔒 这一注已锁定（第 " + target + " 期开出后自动换下一期；再跑一轮会自动按新成绩更新，想现在就重算点「🔁 重新生成下一期」）\n" + txt;
@@ -2844,9 +2850,7 @@ function zodNet(x, truth){
   m.n++;
   return p;
 }
-function zodTrainOn(idxList, epochs){
-  zodInit(false);
-  var rnd = b7seedRnd(556677);
+function zodTrainOn(idxList, epochs){  zodInit(false);  var rnd = b7seedRnd(556677);
   for (var e = 0; e < epochs; e++){
     var order = idxList.slice();
     for (var i = order.length - 1; i > 0; i--){ var j = Math.floor(rnd() * (i + 1)); var t = order[i]; order[i] = order[j]; order[j] = t; }
@@ -2858,6 +2862,22 @@ function zodTrainOn(idxList, epochs){
     }
   }
   ZOD.epochs += epochs;
+}
+// 错题加训（生肖）：错过的期再喂 2 遍给生肖模型
+function zodCatchupTrain(){
+  var cu = catchupList();
+  if (!cu.length || !ZOD.m) return;
+  for (var c1 = 0; c1 < cu.length; c1++){
+    for (var c2 = 0; c2 < draws.length; c2++){
+      if (String(draws[c2].issue) !== String(cu[c1])) continue;
+      var z = ZOD_LIST.indexOf(zodiacOf(draws[c2].special, c2));
+      if (z < 0) break;
+      for (var zr2 = 0; zr2 < 10; zr2++) zodNet(zodFeat(c2), z);
+      break;
+    }
+  }
+  ZOD.epochs += 1;
+  zodSave();
 }
 function zodIdxList(){
   var out = [];
@@ -2903,13 +2923,14 @@ function zodLoad(){
 }
 function zodEnsure(){
   if (!ZOD.m) zodLoad();
-  if (ZOD.m && ZOD.dataLen === draws.length && ZOD.m.n){ ZOD.trainedOnce = true; return; }
+  if (ZOD.m && ZOD.dataLen === draws.length && ZOD.m.n){ ZOD.trainedOnce = true; zodCatchupTrain(); return; }
   if (ZOD.m && ZOD.dataLen && ZOD.dataLen < draws.length){
     // 有新开奖 → 接着学（增量喂几遍，不会把学过的丢掉）
     zodTrainOn(zodIdxList(), 3);
     ZOD.dataLen = draws.length;
     zodSave();
     ZOD.trainedOnce = true;
+    zodCatchupTrain();
     return;
   }
   zodInit(true);
@@ -2921,6 +2942,9 @@ function zodEnsure(){
 function zodNextRank(){
   zodEnsure();
   var arr = zodPredictAt(draws.length);
+  var penZ = zodPenaltyMap();
+  arr.forEach(function(o){ o.s = o.p * (1 - Math.min(0.25, 0.06 * (penZ[o.z] || 0))); });
+  arr.sort(function(a, b){ return b.s - a.s || ZOD_LIST.indexOf(a.z) - ZOD_LIST.indexOf(b.z); });
   var cnt = {};
   for (var n = 1; n <= 49; n++){
     var z = zodiacOf(n, draws.length);
@@ -3043,6 +3067,18 @@ function b7Epoch(list){
     var d = src[tr[i]];
     b7Step(d.normals, d.special, true);
   }
+  // 错题加训：错过的期号再练 10 遍（真的动权重）
+  var cu = catchupList();
+  if (cu.length){
+    var all = b7Split().all;
+    for (var c1 = 0; c1 < cu.length; c1++){
+      for (var c2 = 0; c2 < all.length; c2++){
+        if (String(all[c2].issue) !== String(cu[c1])) continue;
+        for (var cr = 0; cr < 10; cr++) b7Step(all[c2].normals, all[c2].special, true);
+        break;
+      }
+    }
+  }
   B7.epoch++;
   B7.samples = (B7.samples || 0) + src.length;
 }
@@ -3152,10 +3188,74 @@ function setAutoRelock(v){
   try { arenaRender(); } catch(e) {}
 }
 function b7Sig(){
-  return [(B7.epoch || 0), (B7.samples || 0), (B7.dataLen || 0), (ZOD.epochs || 0), (B7.val ? 1 : 0)].join("|");
+  return [(B7.epoch || 0), (B7.samples || 0), (B7.dataLen || 0), (ZOD.epochs || 0), (B7.val ? 1 : 0), catchupList().length, missBook().length].join("|");
 }
 function arenaSig(){
-  return [(ARENA.round || 0), (ARENA.total || 0), (ARENA.lastResult ? 1 : 0), (ZOD.epochs || 0)].join("|");
+  return [(ARENA.round || 0), (ARENA.total || 0), (ARENA.lastResult ? 1 : 0), (ZOD.epochs || 0), catchupList().length, missBook().length].join("|");
+}
+// ===== 错题本：这一注错了 → 下一期把错过的号降权，并把这一期加训两遍（真的改权重，不是摆样子）=====
+function missBook(){
+  try { return JSON.parse(localStorage.getItem(mkey("miss_book")) || "[]") || []; } catch(e) { return []; }
+}
+function missBookAdd(row){
+  try {
+    var a = missBook();
+    a.push(row);
+    localStorage.setItem(mkey("miss_book"), JSON.stringify(a.slice(-12)));
+  } catch(e) {}
+}
+// 最近 8 次错的那几注里，某个号出现在「12 码」却没用上 → 每次记 1 分，用来降权
+function missPenaltyMap(){
+  var pen = {}, m = missBook().slice(-8);
+  m.forEach(function(r){
+    (r.p12 || []).forEach(function(n){ pen[n] = (pen[n] || 0) + 1; });
+  });
+  return pen;
+}
+function missPenText(){
+  var m = missBook();
+  if (!m.length) return "";
+  var last = m[m.length - 1];
+  return "【错题本 · 记忆】最近核对 " + m.length + " 注里有 " + m.length + " 次没中（最近一次 第 " + last.issue + " 期 实开 " + pad2(last.sp) + "）"
+       + "　→ 这些错过的号在下一期排名里已降权，并把错的那一期加训过（权重确实改了，但结果不保证）";
+}
+function catchupAdd(issue){
+  try {
+    var a = catchupList();
+    if (a.indexOf(String(issue)) < 0) a.push(String(issue));
+    localStorage.setItem(mkey("catchup"), JSON.stringify(a.slice(-20)));
+  } catch(e) {}
+}
+function catchupList(){
+  try { return JSON.parse(localStorage.getItem(mkey("catchup")) || "[]") || []; } catch(e) { return []; }
+}
+function catchupText(){
+  var c = catchupList();
+  return c.length ? "【错题加训】已把错过的 " + c.length + " 期（" + c.slice(-5).join("、") + "）在每轮里额外回训 10 遍（号码模型和生肖模型都回训）" : "";
+}
+// 错肖本：10 肖没中 → 记下当时排在前面的那几个肖，下一期给它们降权
+function zodMissBook(){
+  try { return JSON.parse(localStorage.getItem(mkey("zod_miss_book")) || "[]") || []; } catch(e) { return []; }
+}
+function zodMissAdd(row){
+  try {
+    var a = zodMissBook();
+    a.push(row);
+    localStorage.setItem(mkey("zod_miss_book"), JSON.stringify(a.slice(-12)));
+  } catch(e) {}
+}
+// 错肖降权：最近 8 次没中的注里，被排进 10 肖却没中的肖，每出现 1 次记 1 分
+function zodPenaltyMap(){
+  var pen = {}, m = zodMissBook().slice(-8);
+  m.forEach(function(r){ (r.z10 || []).forEach(function(z){ pen[z] = (pen[z] || 0) + 1; }); });
+  return pen;
+}
+function zodMissPenText(){
+  var m = zodMissBook();
+  if (!m.length) return "";
+  var last = m[m.length - 1];
+  return "【错肖本 · 记忆】最近核对 " + m.length + " 注里有 " + m.length + " 次 10 肖没中（最近一次 第 " + last.issue + " 期 实开 " + pad2(last.sp) + " → " + last.zReal + " 肖）"
+       + "　→ 这些错肖在下一期排名里已降权，并把错的那一期再喂给生肖模型（确实动权重，结果不保证）";
 }
 // 新一期进来 → 把锁定的那一注判一下中没中，存档，然后解锁（下一期会重新锁一注）
 function nextLockResolveAll(){
@@ -3177,6 +3277,22 @@ function nextLockResolveAll(){
       h.push(res);
       localStorage.setItem(mkey("next_hist"), JSON.stringify(h.slice(-20)));
       localStorage.removeItem(mkey("next_lock_" + kind));
+      // 错了就记错题、并把这一期加训（12 码没中就算错）
+      if (res.hit12 === false){
+        missBookAdd({ issue: res.issue, sp: last.special, p12: Array.isArray(o.n12) ? o.n12.slice() : [], at: res.at });
+        catchupAdd(res.issue);
+      }
+      // 生肖也核：10 肖没中就记错肖、降权，并把这一期加训（生肖模型一起）
+      var zReal = zodiacOf(last.special, draws.length - 1);
+      res.drawZod = zReal;
+      if (Array.isArray(o.z10)){
+        res.hitZ10 = o.z10.indexOf(zReal) >= 0;
+        res.hitZ6 = Array.isArray(o.z6) ? (o.z6.indexOf(zReal) >= 0) : null;
+        if (!res.hitZ10){
+          zodMissAdd({ issue: res.issue, sp: last.special, zReal: zReal, z10: o.z10.slice(), z6: (o.z6 || []).slice(), at: res.at });
+          catchupAdd(res.issue);
+        }
+      }
     } catch(e) {}
   });
 }
@@ -3291,9 +3407,18 @@ function b7Render(head){  var box = document.getElementById("b7-out");
     var last0 = draws[draws.length - 1], idx0 = draws.length - 1;
     var nIdx = idx0 + 1; // 下一期按下一期的生肖表算（跨农历年才算得对）
     var p0 = b7Step(last0.normals, last0.special, false);
+    var pen0 = missPenaltyMap();
     var ord0 = [];
-    for (var q0 = 0; q0 < 49; q0++) ord0.push({ n: q0 + 1, p: p0[q0] });
-    ord0.sort(function(a, b){ return b.p - a.p; });
+    for (var q0 = 0; q0 < 49; q0++){
+      var penN = pen0[q0 + 1] || 0;
+      ord0.push({ n: q0 + 1, p: p0[q0], s: p0[q0] * (1 - Math.min(0.25, 0.05 * penN)) });
+    }
+    ord0.sort(function(a, b){ return b.s - a.s; });
+    // 生肖也按生肖模型排（顺带把这一注的 10 肖/6 肖记进锁里，开奖后才能核生肖对错）
+    if (!ZOD.m) zodInit(false);
+    var zrW = zodNextRank();
+    var z10W = zrW.slice(0, 10).map(function(o){ return o.z; });
+    var z6W = zrW.slice(0, 6).map(function(o){ return o.z; });
     var nxtIssue = nextIssueNo(last0.issue);
     var att = function(n){
       var a = numAttrs(n, nIdx);
@@ -3364,6 +3489,7 @@ function b7Render(head){  var box = document.getElementById("b7-out");
         sig: sigNow,
         at: new Date().toLocaleString(),
         sp: ord0[0].n,
+        z10: z10W, z6: z6W,
         n12: ord0.slice(0, 12).map(function(o){ return o.n; }),
         n18: ord0.slice(0, 18).map(function(o){ return o.n; }),
         n24: ord0.slice(0, 24).map(function(o){ return o.n; })
@@ -3374,6 +3500,12 @@ function b7Render(head){  var box = document.getElementById("b7-out");
     }
     var nh = nextHistText();
     if (nh) lines.push(""), lines.push(nh);
+    var mp = missPenText();
+    if (mp) lines.push(""), lines.push(mp);
+    var ct = catchupText();
+    if (ct) lines.push(ct);
+    var zp = zodMissPenText();
+    if (zp) lines.push(zp);
   }
   box.innerHTML = "<pre style='margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.9;white-space:pre-wrap;user-select:text;'>" + lines.join("\n") + "</pre>";
 }
