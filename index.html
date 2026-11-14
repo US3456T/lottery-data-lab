@@ -2431,8 +2431,8 @@ function arenaNextBlock(){
   out.push("首选特码（第 7 个）：" + att(base[0]));
   out.push("");
   out.push("【下一期 · 生肖（生肖模型 12 肖 单独跑的排名 · 热→冷）】");
-  out.push("10 肖：" + zr.slice(0, 10).map(function(o){ return o.z + "(" + (o.p * 100).toFixed(1) + "%)"; }).join(" "));
-  out.push("6 肖：" + zr.slice(0, 6).map(function(o){ return o.z + "(" + (o.p * 100).toFixed(1) + "%)"; }).join(" "));
+  out.push("10 肖：" + zr.slice(0, 10).map(function(o){ return o.z; }).join(" "));
+  out.push("6 肖：" + zr.slice(0, 6).map(function(o){ return o.z; }).join(" "));
   out.push("生肖号码来源（每肖的号从小到大）：" + zs.map(function(z2){ return z2 + "(" + asc(zm[z2] || []) + ")"; }).join("  "));
   out.push("24 码（从小到大）：" + asc(list24.slice(0, 24)));
   out.push("18 码（从小到大）：" + asc(base.slice(0, 18)));
@@ -3461,8 +3461,8 @@ function b7Render(head){  var box = document.getElementById("b7-out");
     }
     lines.push("");
     lines.push("【下一期 · 生肖（生肖模型自己跑的排名 · 热→冷）】");
-    lines.push("10 肖： " + zr.slice(0, 10).map(function(o){ return o.z + "(" + (o.p * 100).toFixed(1) + "%)"; }).join(" "));
-    lines.push("6 肖： " + zr.slice(0, 6).map(function(o){ return o.z + "(" + (o.p * 100).toFixed(1) + "%)"; }).join(" "));
+    lines.push("10 肖： " + zr.slice(0, 10).map(function(o){ return o.z; }).join(" "));
+    lines.push("6 肖： " + zr.slice(0, 6).map(function(o){ return o.z; }).join(" "));
     lines.push("生肖号码来源： " + zs10.map(function(z){ return z + "(" + zm10[z].join(" ") + ")"; }).join("  "));
     [24, 18, 12].forEach(function(k){
       var ns = ord0.slice(0, k).map(function(o){ return o.n; });
