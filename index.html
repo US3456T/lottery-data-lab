@@ -771,7 +771,7 @@ function switchMarket(m){
   try { LEDGER.rows = []; LEDGER.sig = ""; LEDGER.model = null; LEDGER.pos = null; } catch(e) {}
   // 特码 AI 与竞技：都换成这一家自己的（下一期清单跟着市场走）
   try {
-    B7.m = null; B7.val = null; B7.epoch = 0; B7.samples = 0; B7.dataLen = 0; B7.track = []; B7.savedAt = ""; B7.running = false; B7.busy = false; B7.freezeShow = null;
+    B7.m = null; B7.val = null; B7.epoch = 0; B7.samples = 0; B7.dataLen = 0; B7.track = []; B7.savedAt = ""; B7.running = false; B7.busy = false; B7.freezeShow = null; B7.frozenHtml = null;
     b7Load();
     try { b7FillCfg(); } catch(e) {}
     b7Render();
@@ -3394,8 +3394,11 @@ function b7Render(head){  var box = document.getElementById("b7-out");
   // 只有点了「🔁 重新生成下一期」或者来了新一期，才换新的号码和生肖。
   if (B7.freezeShow){
     if (!draws.length) return;
-    if (B7.freezeShow === nextIssueNo(draws[draws.length - 1].issue)) return;
-    B7.freezeShow = null;
+    if (B7.freezeShow === nextIssueNo(draws[draws.length - 1].issue)){
+      if (B7.frozenHtml) box.innerHTML = B7.frozenHtml;   // 定住：还原成上一次画好的样子
+      return;
+    }
+    B7.freezeShow = null; B7.frozenHtml = null;            // 来了新一期 → 自动换成新的
   }
   var split = b7Split();
   if (false && B7.track.length){
@@ -3546,6 +3549,7 @@ function b7Render(head){  var box = document.getElementById("b7-out");
     if (zp) lines.push(zp);
   }
   box.innerHTML = "<pre style='margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.9;white-space:pre-wrap;user-select:text;'>" + lines.join("\n") + "</pre>";
+  B7.frozenHtml = box.innerHTML;   // 记一份“画好的样子”，学习期间就用它定住
 }
 function b7StartTrain(){
   if (!draws.length){ alert("先载入历史数据"); return; }
@@ -3579,7 +3583,7 @@ function b7StartTrain(){
     }
   };
   b7Render();
-  B7.freezeShow = draws.length ? nextIssueNo(draws[draws.length - 1].issue) : null;
+  B7.freezeShow = (B7.frozenHtml && draws.length) ? nextIssueNo(draws[draws.length - 1].issue) : null;
   tick();
 }
 function b7ContinueTrain(){
@@ -3642,7 +3646,7 @@ function b7ReadCfgRaw(){
 }
 function b7Relock(){
   nextLockClear("b7");
-  B7.freezeShow = null;          // 只有这一步才会重新算一遍号码和生肖
+  B7.freezeShow = null; B7.frozenHtml = null;   // 只有这一步才会重新算一遍号码和生肖
   if (typeof b7Render === "function") b7Render("已重新生成下一期（旧的一注作废）。");
 }
 function arenaRelock(){
@@ -3716,8 +3720,8 @@ function b7AutoCheck(){
       if (pane && pane.offsetParent !== null) b7Render();
     };
     B7.roundTarget = targetEpoch;
-    B7.freezeShow = draws.length ? nextIssueNo(draws[draws.length - 1].issue) : null;
     b7Render();
+    B7.freezeShow = (B7.frozenHtml && draws.length) ? nextIssueNo(draws[draws.length - 1].issue) : null;
     chunk();
   } catch(e) { B7.busy = false; }
 }
